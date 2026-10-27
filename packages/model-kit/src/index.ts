@@ -6,6 +6,9 @@ import {
   resolveByAlias,
 } from './resolve.js';
 import { pingHub, runTest } from './health.js';
+import { completeJson, streamChat } from './driver.js';
+import type { ChatMessage, ChatResult, StreamChunk } from './driver.js';
+import { reportUsageInBackground } from './reporter.js';
 import type {
   CatalogResponse,
   DriverFactory,
@@ -188,6 +191,88 @@ export class ModelKit {
     });
   }
 
+  // Fire a usage report after a call. BYOK is reported with no hub cost.
+  private reportUsage(
+    feature: string,
+    model: ResolvedModel,
+    usage: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      reasoning_tokens?: number;
+    } | null,
+    httpStatus: number,
+  ): void {
+    const project = this.catalog?.project ?? model.alias ?? 'unknown';
+    void reportUsageInBackground(
+      this.options.hubUrl,
+      this.options.token,
+      this.fetchImpl,
+      {
+        project,
+        feature,
+        billingSource: model.source === 'byok' ? 'byok' : 'builtin',
+        model,
+        inputTokens: usage?.prompt_tokens,
+        outputTokens: usage?.completion_tokens,
+        reasoningTokens: usage?.reasoning_tokens,
+        httpStatus,
+      },
+    );
+  }
+
+  // Non-streaming chat with automatic background usage reporting.
+  async chat(
+    alias: string,
+    messages: ChatMessage[],
+    opts?: {
+      signal?: AbortSignal | undefined;
+      maxTokens?: number | undefined;
+      temperature?: number | undefined;
+    },
+  ): Promise<ChatResult> {
+    const model = this.resolve(alias);
+    const result = await completeJson(
+      {
+        model,
+        messages,
+        signal: opts?.signal,
+        maxTokens: opts?.maxTokens,
+        temperature: opts?.temperature,
+      },
+      this.fetchImpl,
+    );
+    this.reportUsage(alias, model, result.usage, result.httpStatus);
+    return result;
+  }
+
+  // Streaming chat; reports usage from the final include_usage frame.
+  async *stream(
+    alias: string,
+    messages: ChatMessage[],
+    opts?: {
+      signal?: AbortSignal | undefined;
+      maxTokens?: number | undefined;
+      temperature?: number | undefined;
+    },
+  ): AsyncGenerator<StreamChunk> {
+    const model = this.resolve(alias);
+    let usage: StreamChunk['usage'] = null;
+    for await (const chunk of streamChat(
+      {
+        model,
+        messages,
+        signal: opts?.signal,
+        maxTokens: opts?.maxTokens,
+        temperature: opts?.temperature,
+      },
+      this.fetchImpl,
+    )) {
+      if (chunk.usage) usage = chunk.usage;
+      yield chunk;
+    }
+    this.reportUsage(alias, model, usage, 200);
+  }
+
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
@@ -203,11 +288,30 @@ export async function initModelKit(
 }
 
 export type {
+  BillingSource,
   CatalogResponse,
   DriverFactory,
   ModelKitOptions,
   PingResult,
   ProjectedModel,
+  Protocol,
   ResolvedModel,
+  Role,
   TestResult,
 } from './types.js';
+
+export {
+  completeJson,
+  streamChat,
+} from './driver.js';
+export type {
+  ChatMessage,
+  ChatResult,
+  StreamChunk,
+  TokenUsage,
+} from './driver.js';
+
+export { postUsage, reportUsageInBackground } from './reporter.js';
+export type { UsageInput } from './reporter.js';
+
+export { createFakeFetch, FakeProviderError } from './fake.js';
