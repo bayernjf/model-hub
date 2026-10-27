@@ -1,0 +1,20 @@
+{
+  "name": "@model-hub/hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "model-hub server: Hono admin and project-facing APIs with SQLite storage, plus the Astro SSR admin console.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "node --experimental-sqlite --watch --env-file=.env.local src/server.ts",
+    "start": "node --experimental-sqlite dist/server.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.6.16"
+  }
+}
