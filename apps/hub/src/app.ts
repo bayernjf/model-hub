@@ -9,6 +9,10 @@ import { AssignmentRepository } from './repositories/assignments.js';
 import { SlidingWindowRateLimiter } from './rate-limit.js';
 import { RevisionService } from './revision.js';
 import { ProjectionService } from './projection.js';
+import {
+  HealthCheckRepository,
+  UsageRepository,
+} from './repositories/reporting.js';
 import { healthRoutes } from './routes/health.js';
 import { providerRoutes } from './routes/admin/providers.js';
 import { projectRoutes } from './routes/admin/projects.js';
@@ -35,6 +39,8 @@ export function createApp(config: HubConfig, db: DatabaseSync): Hono {
     modelRepo,
     assignmentRepo,
   );
+  const usageRepo = new UsageRepository(db);
+  const healthRepo = new HealthCheckRepository(db);
 
   app.route('/', healthRoutes(db));
   app.route('/api/admin', sessionRoutes(config, db));
@@ -58,7 +64,18 @@ export function createApp(config: HubConfig, db: DatabaseSync): Hono {
     '/api/admin/assignments',
     assignmentRoutes(config, db, assignmentRepo, revision),
   );
-  app.route('/', pubRoutes(projectRepo, projection, revision));
+  app.route(
+    '/',
+    pubRoutes({
+      projectRepo,
+      modelRepo,
+      assignmentRepo,
+      usageRepo,
+      healthRepo,
+      projection,
+      revision,
+    }),
+  );
 
   app.notFound((c) => c.json({ error: { code: 'not_found' } }, 404));
   app.onError((err, c) => {
