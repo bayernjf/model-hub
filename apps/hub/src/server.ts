@@ -1,10 +1,14 @@
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { serve } from '@hono/node-server';
+import { getRequestListener } from '@hono/node-server';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { openDatabase } from './db/open.js';
 import { migrateUp } from './db/migrate.js';
 import { ensureDataDir } from './storage/ensure-data-dir.js';
+
+type NodeListener = (req: IncomingMessage, res: ServerResponse) => void;
 
 const config = loadConfig();
 ensureDataDir(config.dataDir);
@@ -17,10 +21,43 @@ if (applied.length > 0) {
 }
 
 const app = createApp(config, db);
+const honoListener = getRequestListener((request) => app.fetch(request));
 
-serve({ fetch: app.fetch, port: config.port }, (info) => {
+// The Astro SSR handler is built into web/dist. Resolve it via a computed URL
+// so the same relative path works from src/ and the compiled dist/ output.
+const entryUrl = new URL('../web/dist/server/entry.mjs', import.meta.url);
+if (!existsSync(entryUrl)) {
+  console.error(
+    'Astro console not built; run `npm run build -w @model-hub/web` first.',
+  );
+  process.exit(1);
+}
+
+// Import the handler without letting its standalone autostart bind a port.
+process.env.ASTRO_NODE_AUTOSTART = 'disabled';
+const astroEntry = (await import(entryUrl.href)) as {
+  handler: NodeListener;
+};
+const astroHandler = astroEntry.handler;
+
+// Hono owns the API and probes; everything else renders via Astro.
+function isBackend(url: string): boolean {
+  return (
+    url.startsWith('/api/') || url === '/healthz' || url === '/readyz'
+  );
+}
+
+const server = createServer((req, res) => {
+  if (req.url && isBackend(req.url)) {
+    void honoListener(req, res);
+  } else {
+    astroHandler(req, res);
+  }
+});
+
+server.listen(config.port, () => {
   const mode = config.devNoAuth ? ' (dev-no-auth)' : '';
   console.log(
-    `model-hub listening on http://localhost:${info.port}${mode}, data=${config.dataDir}`,
+    `model-hub listening on http://localhost:${config.port}${mode}, data=${config.dataDir}`,
   );
 });
