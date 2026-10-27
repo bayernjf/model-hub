@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+**/dist/
+**/.astro/
+**/coverage/
+*.tsbuildinfo
+
+# Runtime data (SQLite, cached projections, keys) — never committed
+**/data/
+
+# Logs and local env
+*.log
+.env
+.env.local
+
+# OS/editor
+.DS_Store
