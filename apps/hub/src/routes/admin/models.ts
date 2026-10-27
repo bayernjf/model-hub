@@ -13,6 +13,9 @@ import {
   ModelConflictError,
   PresetNotFoundError,
 } from '../../repositories/models.js';
+import type { ProviderRepository } from '../../repositories/providers.js';
+import { SlidingWindowRateLimiter } from '../../rate-limit.js';
+import { testProvider } from '../../connection-test.js';
 import { PRESET_CATALOG } from '../../presets/index.js';
 import {
   ImportModelsSchema,
@@ -25,12 +28,58 @@ export function modelRoutes(
   config: HubConfig,
   db: DatabaseSync,
   repo: ModelRepository,
+  providerRepo: ProviderRepository,
+  rateLimiter: SlidingWindowRateLimiter,
 ): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
   routes.use('*', requireAdmin(config));
 
   const actorOf = (c: { get: (k: 'session') => { username: string } | undefined }) =>
     c.get('session')?.username ?? 'unknown';
+
+  // L1 provider connection test.
+  routes.post('/providers/:id/test', requireOwner(), async (c) => {
+    const providerId = c.req.param('id');
+    const provider = providerRepo.get(providerId);
+    if (!provider) return c.json({ error: { code: 'not_found' } }, 404);
+
+    if (!rateLimiter.allow(clientIp(c))) {
+      return c.json(
+        { error: { code: 'rate_limited', hint: '每小时最多 20 次测试' } },
+        429,
+      );
+    }
+
+    const apiKey = providerRepo.revealKey(providerId);
+    if (!apiKey) {
+      return c.json({
+        ok: false,
+        latency_ms: 0,
+        scope: 'provider',
+        error: { code: 'unauthorized', hint: '尚未配置 API key' },
+      });
+    }
+
+    const result = await testProvider({
+      base_url: provider.base_url,
+      api_key: apiKey,
+      protocol: provider.protocol,
+      billing_type: provider.billing_type,
+      preset_id: provider.preset_id,
+      models: repo.listByProvider(providerId),
+    });
+
+    writeAudit(db, {
+      actor: actorOf(c),
+      action: 'provider.test',
+      targetType: 'provider',
+      targetId: providerId,
+      result: result.ok ? 'success' : 'failure',
+      ip: clientIp(c),
+    });
+
+    return c.json(result);
+  });
 
   // Preset catalog (data only, no credentials).
   routes.get('/presets', (c) =>

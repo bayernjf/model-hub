@@ -5,6 +5,7 @@ import type { HubConfig } from './config.js';
 import { ProviderRepository } from './repositories/providers.js';
 import { ProjectRepository } from './repositories/projects.js';
 import { ModelRepository } from './repositories/models.js';
+import { SlidingWindowRateLimiter } from './rate-limit.js';
 import { healthRoutes } from './routes/health.js';
 import { providerRoutes } from './routes/admin/providers.js';
 import { projectRoutes } from './routes/admin/projects.js';
@@ -20,12 +21,17 @@ export function createApp(config: HubConfig, db: DatabaseSync): Hono {
   const providerRepo = new ProviderRepository(db, keyRing);
   const projectRepo = new ProjectRepository(db);
   const modelRepo = new ModelRepository(db);
+  // Connection tests: 20 per hour per IP.
+  const testRateLimiter = new SlidingWindowRateLimiter(20, 3_600_000);
 
   app.route('/', healthRoutes(db));
   app.route('/api/admin', sessionRoutes(config, db));
   app.route('/api/admin/providers', providerRoutes(config, db, providerRepo));
   app.route('/api/admin/projects', projectRoutes(config, db, projectRepo));
-  app.route('/api/admin', modelRoutes(config, db, modelRepo));
+  app.route(
+    '/api/admin',
+    modelRoutes(config, db, modelRepo, providerRepo, testRateLimiter),
+  );
 
   app.notFound((c) => c.json({ error: { code: 'not_found' } }, 404));
   app.onError((err, c) => {

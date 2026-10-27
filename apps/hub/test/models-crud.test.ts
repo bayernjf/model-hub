@@ -1,7 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { makeTestApp, login, type TestApp } from './helpers.js';
 
-async function createProvider(app: TestApp['app'], cookie: string): Promise<string> {
+async function createProvider(
+  app: TestApp['app'],
+  cookie: string,
+  extra: Record<string, unknown> = {},
+): Promise<string> {
   const res = await app.request('/api/admin/providers', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -11,6 +15,7 @@ async function createProvider(app: TestApp['app'], cookie: string): Promise<stri
       protocol: 'openai-compatible',
       base_url: 'https://ark.cn-beijing.volces.com/api/v3',
       billing_type: 'payg',
+      ...extra,
     }),
   });
   const data = (await res.json()) as { provider: { id: string } };
@@ -225,6 +230,77 @@ describe('model management', () => {
         }),
       },
     );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('L1 provider test route', () => {
+  let t: TestApp;
+  let cookie: string;
+
+  beforeEach(async () => {
+    t = makeTestApp();
+    cookie = await login(t.app);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const okResponse = () =>
+    new Response(JSON.stringify({ choices: [{}], model: 'auto' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  it('runs an L1 test and returns the result', async () => {
+    const pid = await createProvider(t.app, cookie, { api_key: 'sk-real' });
+    const mockFetch = vi.fn(async () => okResponse());
+    vi.stubGlobal('fetch', mockFetch);
+    const res = await t.app.request(`/api/admin/providers/${pid}/test`, {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok: boolean };
+    expect(data.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
+
+  it('returns an error when no key is configured', async () => {
+    const pid = await createProvider(t.app, cookie);
+    const res = await t.app.request(`/api/admin/providers/${pid}/test`, {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+    const data = (await res.json()) as {
+      ok: boolean;
+      error: { code: string };
+    };
+    expect(data.ok).toBe(false);
+    expect(data.error.code).toBe('unauthorized');
+  });
+
+  it('enforces the 20/hour rate limit', async () => {
+    const pid = await createProvider(t.app, cookie, { api_key: 'sk-real' });
+    vi.stubGlobal('fetch', vi.fn(async () => okResponse()));
+    for (let i = 0; i < 20; i++) {
+      await t.app.request(`/api/admin/providers/${pid}/test`, {
+        method: 'POST',
+        headers: { Cookie: cookie },
+      });
+    }
+    const res = await t.app.request(`/api/admin/providers/${pid}/test`, {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(429);
+  });
+
+  it('forbids operator from running tests', async () => {
+    const pid = await createProvider(t.app, cookie, { api_key: 'sk-real' });
+    const opCookie = await login(t.app, 'operator', 'operator-password-123');
+    const res = await t.app.request(`/api/admin/providers/${pid}/test`, {
+      method: 'POST',
+      headers: { Cookie: opCookie },
+    });
     expect(res.status).toBe(403);
   });
 });
