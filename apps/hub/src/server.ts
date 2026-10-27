@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { getRequestListener } from '@hono/node-server';
 import { createApp } from './app.js';
+import { isBackendPath } from './backend-routes.js';
 import { loadConfig } from './config.js';
 import { openDatabase } from './db/open.js';
 import { migrateUp } from './db/migrate.js';
@@ -40,15 +41,10 @@ const astroEntry = (await import(entryUrl.href)) as {
 };
 const astroHandler = astroEntry.handler;
 
-// Hono owns the API and probes; everything else renders via Astro.
-function isBackend(url: string): boolean {
-  return (
-    url.startsWith('/api/') || url === '/healthz' || url === '/readyz'
-  );
-}
-
+// Hono owns the API, public projection and probes; everything else
+// renders via Astro.
 const server = createServer((req, res) => {
-  if (req.url && isBackend(req.url)) {
+  if (req.url && isBackendPath(req.url)) {
     void honoListener(req, res);
   } else {
     astroHandler(req, res);
