@@ -21,7 +21,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "test": "vitest run",
-    "check:all": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "test:python": "python3 -m unittest discover -s clients/python/tests -t clients/python",
+    "check:all": "npm run typecheck && npm run lint && npm run test && npm run test:python && npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
