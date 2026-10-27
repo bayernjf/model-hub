@@ -25,17 +25,22 @@ with open(FIXTURE, "r", encoding="utf-8") as fh:
 
 
 class FakeResponse:
-    def __init__(self, body: dict):
+    def __init__(self, body: dict, status: int = 200):
         self._body = body
+        self.status = status
 
     def read(self) -> bytes:
         return json.dumps(self._body).encode("utf-8")
 
 
-def make_opener(catalog=None, status=200, exc=None, etag_304=False):
+def make_opener(catalog=None, status=200, exc=None, etag_304=False, capture=None):
     def opener(req: request.Request):
         if exc is not None:
             raise exc
+        if capture is not None and req.get_method() == "POST":
+            capture["req"] = req
+            capture["body"] = json.loads(req.data.decode("utf-8"))
+            return FakeResponse({}, status)
         sent = {k.lower() for k, _ in req.header_items()}
         if etag_304 and "if-none-match" in sent:
             raise error.HTTPError(
@@ -119,6 +124,16 @@ class ClientTests(unittest.TestCase):
         client.pull()
         with self.assertRaises(ResolutionError):
             client.resolve("noul")
+
+    def test_report_usage_posts_body(self):
+        captured = {}
+        client = self.make_client(
+            opener=make_opener(capture=captured)
+        )
+        status = client.report_usage({"project": "loom", "model": "m"})
+        self.assertEqual(status, 200)
+        self.assertEqual(captured["req"].full_url, "https://hub.local/pub/v1/usage")
+        self.assertEqual(captured["body"]["project"], "loom")
 
 
 if __name__ == "__main__":

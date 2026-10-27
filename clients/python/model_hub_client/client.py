@@ -97,6 +97,25 @@ class ModelHubClient:
             f"no primary model for modality {modality!r}"
         )
 
+    def report_usage(self, body: dict[str, Any]) -> int:
+        """POST a usage event to /pub/v1/usage; returns the HTTP status.
+
+        Network/HTTP errors propagate to the caller (usage reporting is
+        fire-and-forget at the call sites).
+        """
+        req = request.Request(
+            f"{self.hub_url}/pub/v1/usage",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        resp = self._open(req)
+        status = getattr(resp, "status", None) or getattr(resp, "code", 200)
+        return int(status)
+
     @property
     def revision(self) -> int | None:
         return self._catalog.get("revision") if self._catalog else None
