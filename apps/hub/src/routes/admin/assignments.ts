@@ -8,6 +8,7 @@ import {
 } from '../../auth/middleware.js';
 import { writeAudit } from '../../audit.js';
 import type { HubConfig } from '../../config.js';
+import type { RevisionService } from '../../revision.js';
 import {
   AssignmentValidationError,
   type AssignmentInput,
@@ -23,6 +24,7 @@ export function assignmentRoutes(
   config: HubConfig,
   db: DatabaseSync,
   repo: AssignmentRepository,
+  revision: RevisionService,
 ): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
   routes.use('*', requireAdmin(config));
@@ -66,6 +68,7 @@ export function assignmentRoutes(
         result: 'success',
         ip: clientIp(c),
       });
+      revision.bump();
       return c.json({ assignments });
     } catch (err) {
       if (err instanceof AssignmentValidationError) {

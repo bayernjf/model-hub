@@ -17,6 +17,7 @@ import type { ProviderRepository } from '../../repositories/providers.js';
 import { SlidingWindowRateLimiter } from '../../rate-limit.js';
 import { testProvider, testModel } from '../../connection-test.js';
 import { PRESET_CATALOG } from '../../presets/index.js';
+import type { RevisionService } from '../../revision.js';
 import {
   ImportModelsSchema,
   ManualModelCreateSchema,
@@ -30,6 +31,7 @@ export function modelRoutes(
   repo: ModelRepository,
   providerRepo: ProviderRepository,
   rateLimiter: SlidingWindowRateLimiter,
+  revision: RevisionService,
 ): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
   routes.use('*', requireAdmin(config));
@@ -175,6 +177,7 @@ export function modelRoutes(
           result: 'success',
           ip: clientIp(c),
         });
+        revision.bump();
         return c.json(result, 201);
       } catch (err) {
         if (err instanceof PresetNotFoundError) {
@@ -210,6 +213,7 @@ export function modelRoutes(
         result: 'success',
         ip: clientIp(c),
       });
+      revision.bump();
       return c.json({ model }, 201);
     } catch (err) {
       if (err instanceof ModelConflictError) {
@@ -244,6 +248,7 @@ export function modelRoutes(
       result: 'success',
       ip: clientIp(c),
     });
+    revision.bump();
     return c.json({ model });
   });
 
@@ -260,6 +265,7 @@ export function modelRoutes(
       result: 'success',
       ip: clientIp(c),
     });
+    revision.bump();
     return c.json({ ok: true });
   });
 

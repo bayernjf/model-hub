@@ -9,6 +9,7 @@ import {
 import { writeAudit } from '../../audit.js';
 import type { HubConfig } from '../../config.js';
 import type { ProviderRepository } from '../../repositories/providers.js';
+import type { RevisionService } from '../../revision.js';
 import {
   validateProviderCreate,
   validateProviderUpdate,
@@ -32,6 +33,7 @@ export function providerRoutes(
   config: HubConfig,
   db: DatabaseSync,
   repo: ProviderRepository,
+  revision: RevisionService,
 ): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
   routes.use('*', requireAdmin(config));
@@ -58,6 +60,7 @@ export function providerRoutes(
         result: 'success',
         ip: clientIp(c),
       });
+      revision.bump();
       return c.json({ provider }, 201);
     } catch (err) {
       if (err instanceof ValidationError) return validationResponse(c, err);
@@ -80,6 +83,7 @@ export function providerRoutes(
         result: 'success',
         ip: clientIp(c),
       });
+      revision.bump();
       return c.json({ provider });
     } catch (err) {
       if (err instanceof ValidationError) return validationResponse(c, err);
@@ -99,6 +103,7 @@ export function providerRoutes(
       result: 'success',
       ip: clientIp(c),
     });
+    revision.bump();
     return c.json({ ok: true });
   });
 
