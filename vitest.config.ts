@@ -7,7 +7,11 @@ const externalizeNodeSqlite = {
   name: 'externalize-node-sqlite',
   enforce: 'pre' as const,
   resolveId(source: string) {
-    if (source === 'node:sqlite') return { id: 'node:sqlite', external: true };
+    // Match both the prefixed and (during some Vite resolve stages) the
+    // bare "sqlite" id and force it external to Node.
+    if (source === 'node:sqlite' || source === 'sqlite') {
+      return { id: 'node:sqlite', external: true };
+    }
     return null;
   },
 };

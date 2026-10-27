@@ -11,7 +11,10 @@
     "dev": "node --experimental-sqlite --watch --env-file=.env.local src/server.ts",
     "start": "node --experimental-sqlite dist/server.js",
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "migrate:up": "node --experimental-sqlite ../../scripts/migrate.mjs up",
+    "migrate:status": "node --experimental-sqlite ../../scripts/migrate.mjs status",
+    "check:migrations": "bash ../../scripts/check-migrations.sh"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
