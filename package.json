@@ -1,0 +1,32 @@
+{
+  "name": "model-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unified model control plane: manage provider credentials, a preset model catalog, and per-project model assignments; projects pull the projected catalog via project tokens and call providers directly.",
+  "type": "module",
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.8.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @model-hub/hub",
+    "start": "npm run start -w @model-hub/hub",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "check:all": "npm run typecheck && npm run lint && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^2.1.8"
+  }
+}

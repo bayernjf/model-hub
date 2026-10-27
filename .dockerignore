@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+**/coverage
+data
+.env
+.env.local
+.git
+.gitignore
+*.log
+.DS_Store
+apps/hub/web

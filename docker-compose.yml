@@ -1,0 +1,24 @@
+# Local/staging skeleton. Production co-hosting (Caddy reverse proxy,
+# Tailscale-only exposure, Litestream backups) is defined in W7-5 and the
+# bayjf deployment docs.
+services:
+  model-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: model-hub:latest
+    container_name: model-hub
+    environment:
+      HUB_MASTER_KEY: ${HUB_MASTER_KEY:?set HUB_MASTER_KEY in .env.local}
+      HUB_ADMIN_PASSWORD: ${HUB_ADMIN_PASSWORD:?set HUB_ADMIN_PASSWORD in .env.local}
+      HUB_PORT: "8791"
+      HUB_DATA_DIR: /data
+    ports:
+      # Bind to loopback only; Caddy/Tailscale handles external exposure.
+      - "127.0.0.1:8791:8791"
+    volumes:
+      - model-hub-data:/data
+    restart: unless-stopped
+
+volumes:
+  model-hub-data:
