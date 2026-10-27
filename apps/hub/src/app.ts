@@ -5,11 +5,13 @@ import type { HubConfig } from './config.js';
 import { ProviderRepository } from './repositories/providers.js';
 import { ProjectRepository } from './repositories/projects.js';
 import { ModelRepository } from './repositories/models.js';
+import { AssignmentRepository } from './repositories/assignments.js';
 import { SlidingWindowRateLimiter } from './rate-limit.js';
 import { healthRoutes } from './routes/health.js';
 import { providerRoutes } from './routes/admin/providers.js';
 import { projectRoutes } from './routes/admin/projects.js';
 import { modelRoutes } from './routes/admin/models.js';
+import { assignmentRoutes } from './routes/admin/assignments.js';
 import { sessionRoutes } from './routes/admin/session.js';
 
 // Build the Hono app with the shared config and database connection. The
@@ -21,6 +23,7 @@ export function createApp(config: HubConfig, db: DatabaseSync): Hono {
   const providerRepo = new ProviderRepository(db, keyRing);
   const projectRepo = new ProjectRepository(db);
   const modelRepo = new ModelRepository(db);
+  const assignmentRepo = new AssignmentRepository(db);
   // Connection tests: 20 per hour per IP.
   const testRateLimiter = new SlidingWindowRateLimiter(20, 3_600_000);
 
@@ -31,6 +34,10 @@ export function createApp(config: HubConfig, db: DatabaseSync): Hono {
   app.route(
     '/api/admin',
     modelRoutes(config, db, modelRepo, providerRepo, testRateLimiter),
+  );
+  app.route(
+    '/api/admin/assignments',
+    assignmentRoutes(config, db, assignmentRepo),
   );
 
   app.notFound((c) => c.json({ error: { code: 'not_found' } }, 404));
