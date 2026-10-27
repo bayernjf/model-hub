@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "model-hub-client"
+version = "0.1.0"
+description = "Project-side client for model-hub: pull and cache the projected catalog and resolve models by alias/modality."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "BayJF" }]
+
+# Consumed via Git tag, e.g.
+#   pip install "model-hub-client @ git+ssh://git@host/model-hub.git@v0.1.0#subdirectory=clients/python"
+
+[project.optional-dependencies]
+test = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["model_hub_client*"]
