@@ -143,6 +143,9 @@ export function modelRoutes(
     c.json({ models: repo.listByProvider(c.req.param('id')) }),
   );
 
+  // All models across providers (model page).
+  routes.get('/models', (c) => c.json({ models: repo.listAll() }));
+
   // Batch-import preset models (disabled by default).
   routes.post(
     '/providers/:id/models/import',

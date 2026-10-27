@@ -6,38 +6,12 @@ import {
   XCircle,
 } from 'lucide-react';
 import { apiFetch, apiJson } from './api';
-
-interface Provider {
-  id: string;
-  name: string;
-  preset_id: string | null;
-  protocol: string;
-  base_url: string;
-  billing_type: string;
-  api_key_hint: string | null;
-  has_api_key: boolean;
-  enabled: boolean;
-}
-
-interface TestResult {
-  ok: boolean;
-  latency_ms: number;
-  model_echo?: string | null;
-  error?: { code: string; hint?: string; detail?: string };
-}
-
-interface PresetProvider {
-  id: string;
-  name: string;
-  protocol: string;
-  default_base_url: string;
-  billing_type: string;
-  key_label: string;
-}
-
-interface PresetsResponse {
-  presets: PresetProvider[];
-}
+import type {
+  Provider,
+  PresetProvider,
+  PresetsResponse,
+  ConnectionTestResult as TestResult,
+} from './types';
 
 function TestBadge({ result }: { result: TestResult | undefined }) {
   if (!result) return <span className="tag">未测试</span>;
