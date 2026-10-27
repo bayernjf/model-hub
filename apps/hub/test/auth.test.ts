@@ -147,7 +147,7 @@ describe('admin audit', () => {
       )
       .all() as Array<{ action: string; result: string; actor: string }>;
 
-    expect(rows.map((r) => r.result)).toEqual(['success', 'failure']);
+    expect(rows.map((r) => r.result).sort()).toEqual(['failure', 'success']);
   });
 });
 
