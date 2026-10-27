@@ -106,6 +106,17 @@ export default function Models() {
     [],
   );
 
+  const toggleEnabled = useCallback(
+    async (id: string, enabled: boolean) => {
+      await apiFetch(`/api/admin/models/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+      });
+      void load();
+    },
+    [load],
+  );
+
   const providerName = useCallback(
     (providerId: string) =>
       providers.find((p) => p.id === providerId)?.name ?? providerId,
@@ -156,6 +167,7 @@ export default function Models() {
               <th>厂商</th>
               <th>模态</th>
               <th>单价</th>
+              <th>启用</th>
               <th>L2 状态</th>
               <th>操作</th>
             </tr>
@@ -167,6 +179,13 @@ export default function Models() {
                 <td>{providerName(m.provider_id)}</td>
                 <td className="mono dim">{m.modalities.join(',')}</td>
                 <td><PriceText model={m} /></td>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={m.enabled}
+                    onChange={(e) => void toggleEnabled(m.id, e.target.checked)}
+                  />
+                </td>
                 <td><L2Badge result={l2[m.id]} /></td>
                 <td>
                   <button

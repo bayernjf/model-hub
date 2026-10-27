@@ -234,4 +234,27 @@ export class ProjectRepository {
       .run(enabled ? 1 : 0, tokenId);
     return Number(result.changes) > 0;
   }
+
+  // Authenticate a plaintext project token. Succeeds only when the token and
+  // its project are both enabled. Records the token's last use.
+  authenticateToken(
+    token: string,
+  ): { project: ProjectView; tokenId: string } | null {
+    const hash = hashProjectToken(token);
+    const tokenRow = this.db
+      .prepare(
+        `SELECT * FROM tokens WHERE token_hash = ? AND enabled = 1`,
+      )
+      .get(hash) as TokenRow | undefined;
+    if (!tokenRow) return null;
+
+    const project = this.projectRow(tokenRow.project_id);
+    if (!project || project.enabled !== 1) return null;
+
+    this.db
+      .prepare('UPDATE tokens SET last_used_at = ? WHERE id = ?')
+      .run(nowIso(), tokenRow.id);
+
+    return { project: toProjectView(project), tokenId: tokenRow.id };
+  }
 }
