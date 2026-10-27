@@ -26,9 +26,9 @@ export interface TestResult {
   ok: boolean;
   latency_ms: number;
   scope: 'provider' | 'model';
-  auth_identity?: string | null;
-  model_echo?: string | null;
-  error?: TestError;
+  auth_identity?: string | null | undefined;
+  model_echo?: string | null | undefined;
+  error?: TestError | undefined;
 }
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
@@ -142,6 +142,62 @@ async function probeChat(
   }
 }
 
+// Minimal embedding probe; a 200 with a data array proves the model works.
+async function probeEmbed(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  timeoutMs: number,
+  fetchImpl: FetchLike,
+): Promise<TestResult> {
+  const start = Date.now();
+  try {
+    const res = await fetchImpl(joinUrl(baseUrl, '/embeddings'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model, input: 'hi' }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const latency = Date.now() - start;
+    if (!res.ok) {
+      return {
+        ok: false,
+        latency_ms: latency,
+        scope: 'model',
+        error: {
+          code: classifyStatus(res.status),
+          detail: await safeText(res),
+        },
+      };
+    }
+    const data = (await res.json().catch(() => null)) as {
+      data?: unknown;
+    } | null;
+    if (!data || !Array.isArray(data.data)) {
+      return {
+        ok: false,
+        latency_ms: latency,
+        scope: 'model',
+        error: { code: 'dialect_mismatch', hint: '响应缺少 data 数组' },
+      };
+    }
+    return { ok: true, latency_ms: latency, scope: 'model' };
+  } catch (err) {
+    return {
+      ok: false,
+      latency_ms: Date.now() - start,
+      scope: 'model',
+      error: {
+        code: classifyFetchError(err),
+        hint: 'baseUrl 不可达或请求超时',
+      },
+    };
+  }
+}
+
 // GET /models auth/visibility probe for image/video-only providers or when
 // no chat model is available. A 200 proves the key is accepted.
 async function probeModelsList(
@@ -247,4 +303,194 @@ export async function testProvider(
     TEST_TIMEOUT_MS,
     fetchImpl,
   );
+}
+
+// Deep image probe: one minimal paid generation.
+async function probeImageGenerate(
+  baseUrl: string,
+  apiKey: string,
+  model: ModelView,
+  timeoutMs: number,
+  fetchImpl: FetchLike,
+): Promise<TestResult> {
+  const path = model.endpoints_override?.images ?? '/images/generations';
+  const start = Date.now();
+  try {
+    const res = await fetchImpl(joinUrl(baseUrl, path), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: model.model,
+        prompt: 'test',
+        n: 1,
+        size: '1024x1024',
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const latency = Date.now() - start;
+    if (!res.ok) {
+      return {
+        ok: false,
+        latency_ms: latency,
+        scope: 'model',
+        error: {
+          code: classifyStatus(res.status),
+          detail: await safeText(res),
+        },
+      };
+    }
+    return { ok: true, latency_ms: latency, scope: 'model' };
+  } catch (err) {
+    return {
+      ok: false,
+      latency_ms: Date.now() - start,
+      scope: 'model',
+      error: { code: classifyFetchError(err) },
+    };
+  }
+}
+
+// Deep video probe: submit the task exactly once and return on acceptance;
+// never poll or resubmit (the loom no-retry-on-spend rule).
+async function probeVideoSubmit(
+  baseUrl: string,
+  apiKey: string,
+  model: ModelView,
+  timeoutMs: number,
+  fetchImpl: FetchLike,
+): Promise<TestResult> {
+  const path = model.endpoints_override?.videos ?? '/videos';
+  const start = Date.now();
+  try {
+    const res = await fetchImpl(joinUrl(baseUrl, path), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model: model.model, prompt: 'test', duration: 1 }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const latency = Date.now() - start;
+    if (res.status !== 200 && res.status !== 201) {
+      return {
+        ok: false,
+        latency_ms: latency,
+        scope: 'model',
+        error: {
+          code: classifyStatus(res.status),
+          detail: await safeText(res),
+        },
+      };
+    }
+    return { ok: true, latency_ms: latency, scope: 'model' };
+  } catch (err) {
+    return {
+      ok: false,
+      latency_ms: Date.now() - start,
+      scope: 'model',
+      error: { code: classifyFetchError(err) },
+    };
+  }
+}
+
+export interface ModelTestInput {
+  base_url: string;
+  api_key: string;
+  billing_type: string;
+  model: ModelView;
+  deep: boolean;
+}
+
+// L2 single-model test. Text models make a real minimal call (max_tokens=1,
+// or 32 for reasoning models) and the model echo is compared for
+// non-subscription providers. Image/video models are free visibility probes
+// by default; deep performs one paid generation / one video submission.
+export async function testModel(
+  input: ModelTestInput,
+  fetchImpl: FetchLike = fetch,
+): Promise<TestResult> {
+  const subscription = input.billing_type === 'subscription';
+  const model = input.model;
+
+  if (model.modalities.includes('text')) {
+    const result = await probeChat(
+      input.base_url,
+      input.api_key,
+      model.model,
+      {
+        subscription,
+        reasoning: model.reasoning,
+        timeoutMs: TEST_TIMEOUT_MS,
+      },
+      fetchImpl,
+    );
+    const scoped: TestResult = { ...result, scope: 'model' };
+
+    if (scoped.ok && !subscription && scoped.model_echo !== model.model) {
+      return {
+        ok: false,
+        latency_ms: scoped.latency_ms,
+        scope: 'model',
+        model_echo: scoped.model_echo,
+        error: {
+          code: 'dialect_mismatch',
+          detail: `模型回显 "${scoped.model_echo ?? ''}" 与配置 "${model.model}" 不符`,
+          hint: '检查模型 ID 或端点配置',
+        },
+      };
+    }
+    return scoped;
+  }
+
+  if (model.modalities.includes('embedding')) {
+    return probeEmbed(
+      input.base_url,
+      input.api_key,
+      model.model,
+      TEST_TIMEOUT_MS,
+      fetchImpl,
+    );
+  }
+
+  if (
+    model.modalities.includes('image') ||
+    model.modalities.includes('video')
+  ) {
+    if (!input.deep) {
+      const result = await probeModelsList(
+        input.base_url,
+        input.api_key,
+        TEST_TIMEOUT_MS,
+        fetchImpl,
+      );
+      return { ...result, scope: 'model' };
+    }
+    if (model.modalities.includes('video')) {
+      return probeVideoSubmit(
+        input.base_url,
+        input.api_key,
+        model,
+        TEST_TIMEOUT_MS,
+        fetchImpl,
+      );
+    }
+    return probeImageGenerate(
+      input.base_url,
+      input.api_key,
+      model,
+      TEST_TIMEOUT_MS,
+      fetchImpl,
+    );
+  }
+
+  return {
+    ok: false,
+    latency_ms: 0,
+    scope: 'model',
+    error: { code: 'dialect_mismatch', hint: '模型没有可测试的模态' },
+  };
 }

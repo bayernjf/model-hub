@@ -1,10 +1,52 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   testProvider,
+  testModel,
   type FetchLike,
   type ProviderTestInput,
+  type ModelTestInput,
 } from '../src/connection-test.js';
 import { SlidingWindowRateLimiter } from '../src/rate-limit.js';
+import type { ModelView } from '../src/repositories/models.js';
+
+function makeModel(over: Partial<ModelView> = {}): ModelView {
+  return {
+    id: 'mdl_1',
+    provider_id: 'prov_1',
+    preset_model_id: null,
+    model: 'test-model',
+    display_name: 'Test',
+    modalities: ['text'],
+    litellm_id: null,
+    context_window: 1000,
+    supports_json: false,
+    supports_stream: false,
+    pricing: {},
+    endpoints_override: null,
+    adapter: null,
+    is_default: false,
+    sort_order: 0,
+    enabled: true,
+    reasoning: false,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    ...over,
+  };
+}
+
+function modelTestInput(
+  model: ModelView,
+  over: Partial<ModelTestInput> = {},
+): ModelTestInput {
+  return {
+    base_url: 'https://example.com/v1',
+    api_key: 'sk-test',
+    billing_type: 'payg',
+    model,
+    deep: false,
+    ...over,
+  };
+}
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -149,5 +191,113 @@ describe('SlidingWindowRateLimiter', () => {
     expect(rl.allow('a', 0)).toBe(true);
     expect(rl.allow('b', 0)).toBe(true);
     expect(rl.allow('a', 100)).toBe(false);
+  });
+});
+
+describe('testModel (L2)', () => {
+  it('passes a text model with a matching echo at max_tokens=1', async () => {
+    let captured: Record<string, unknown> = {};
+    const spy: FetchLike = async (_url, init) => {
+      captured = JSON.parse(init?.body as string) as Record<string, unknown>;
+      return jsonResponse(200, { choices: [{}], model: 'test-model' });
+    };
+    const result = await testModel(modelTestInput(makeModel()), spy);
+    expect(result.ok).toBe(true);
+    expect(result.scope).toBe('model');
+    expect(captured.max_tokens).toBe(1);
+  });
+
+  it('uses max_tokens=32 for a reasoning model', async () => {
+    let captured: Record<string, unknown> = {};
+    const spy: FetchLike = async (_url, init) => {
+      captured = JSON.parse(init?.body as string) as Record<string, unknown>;
+      return jsonResponse(200, { choices: [{}], model: 'test-model' });
+    };
+    const result = await testModel(
+      modelTestInput(makeModel({ reasoning: true })),
+      spy,
+    );
+    expect(result.ok).toBe(true);
+    expect(captured.max_tokens).toBe(32);
+  });
+
+  it('does not compare echo for a subscription provider', async () => {
+    const spy: FetchLike = () =>
+      Promise.resolve(jsonResponse(200, { choices: [{}], model: 'auto' }));
+    const result = await testModel(
+      modelTestInput(makeModel(), { billing_type: 'subscription' }),
+      spy,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('flags a mismatched echo as dialect_mismatch', async () => {
+    const spy: FetchLike = () =>
+      Promise.resolve(
+        jsonResponse(200, { choices: [{}], model: 'some-other-model' }),
+      );
+    const result = await testModel(modelTestInput(makeModel()), spy);
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('dialect_mismatch');
+  });
+
+  it('passes an embedding model', async () => {
+    const model = makeModel({
+      modalities: ['embedding'],
+      model: 'embedding-model',
+    });
+    const spy: FetchLike = () =>
+      Promise.resolve(jsonResponse(200, { data: [{}] }));
+    const result = await testModel(modelTestInput(model), spy);
+    expect(result.ok).toBe(true);
+  });
+
+  it('free-probes an image model via the models list', async () => {
+    const model = makeModel({
+      modalities: ['image'],
+      model: 'image-model',
+    });
+    let url = '';
+    const spy: FetchLike = async (u) => {
+      url = u;
+      return jsonResponse(200, { data: [] });
+    };
+    const result = await testModel(modelTestInput(model), spy);
+    expect(result.ok).toBe(true);
+    expect(url).toContain('/models');
+  });
+
+  it('deep image test performs one generation', async () => {
+    const model = makeModel({
+      modalities: ['image'],
+      model: 'image-model',
+      endpoints_override: { images: '/images/generations' },
+    });
+    const spy = vi.fn(() =>
+      Promise.resolve(jsonResponse(200, { data: [{}] })),
+    );
+    const result = await testModel(
+      modelTestInput(model, { deep: true }),
+      spy,
+    );
+    expect(result.ok).toBe(true);
+    expect(spy).toHaveBeenCalledOnce();
+  });
+
+  it('deep video test submits once and never polls', async () => {
+    const model = makeModel({
+      modalities: ['video'],
+      model: 'video-model',
+      endpoints_override: { videos: '/videos' },
+    });
+    const spy = vi.fn(() =>
+      Promise.resolve(new Response('', { status: 201 })),
+    );
+    const result = await testModel(
+      modelTestInput(model, { deep: true }),
+      spy,
+    );
+    expect(result.ok).toBe(true);
+    expect(spy).toHaveBeenCalledOnce();
   });
 });
