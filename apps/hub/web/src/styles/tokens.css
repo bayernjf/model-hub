@@ -136,6 +136,18 @@ input, select, textarea {
 .token-item { display: flex; align-items: center; gap: 12px; padding: 6px 8px; }
 
 /* Assignments */
+.dashboard-bar {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: var(--hair);
+  border-radius: 8px;
+  background: var(--steel-850);
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.dashboard-bar b { color: var(--ink); font-weight: 600; }
 .section-title { margin: 0 0 10px; font-size: 13px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.05em; }
 .assign-row { border-bottom: var(--hair); padding: 8px 0; }
 .assign-row:last-child { border-bottom: none; }

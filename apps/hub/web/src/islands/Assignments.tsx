@@ -13,6 +13,7 @@ interface ProjectSummary {
 }
 
 interface AssignmentSummary {
+  id: string;
   model_id: string;
   role: string;
   alias: string | null;
@@ -24,6 +25,15 @@ interface Draft {
   role: string;
   alias: string;
   budget: string;
+}
+
+interface HealthSummary {
+  assignment_id: string | null;
+  level: string;
+  ok: boolean;
+  latency_ms: number;
+  error_code: string | null;
+  ts: string;
 }
 
 const MODALITY_SECTIONS = [
@@ -47,6 +57,11 @@ export default function Assignments() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [health, setHealth] = useState<HealthSummary[]>([]);
+  const [revision, setRevision] = useState<number>(1);
+  const [assignmentIdByModel, setAssignmentIdByModel] = useState<
+    Record<string, string>
+  >({});
 
   useEffect(() => {
     void apiJson<{ projects: ProjectSummary[] }>(
@@ -74,6 +89,11 @@ export default function Assignments() {
         `/api/admin/assignments?project=${projectId}`,
       );
       const next: Record<string, Draft> = {};
+      const idByModel: Record<string, string> = {};
+      for (const a of data.assignments) {
+        idByModel[a.model_id] = a.id;
+      }
+      setAssignmentIdByModel(idByModel);
       for (const m of models) {
         const assigned = data.assignments.find((a) => a.model_id === m.id);
         next[m.id] = assigned
@@ -89,6 +109,16 @@ export default function Assignments() {
           : emptyDraft();
       }
       setDrafts(next);
+
+      const healthData = await apiJson<{ health_checks: HealthSummary[] }>(
+        `/api/admin/health-checks?project=${projectId}`,
+      );
+      setHealth(healthData.health_checks);
+      const status = await apiJson<{ revision: number }>(
+        '/api/admin/status',
+      );
+      setRevision(status.revision);
+
       setLoading(false);
     },
     [models],
@@ -174,6 +204,12 @@ export default function Assignments() {
 
       {message && <div className="dim">{message}</div>}
 
+      <div className="dashboard-bar">
+        <span>当前 revision：<b className="mono">{revision}</b></span>
+        <span>已分配模型：<b className="mono">{Object.keys(assignmentIdByModel).length}</b></span>
+        <span>最近 L4 回报：<b className="mono">{health[0]?.ts?.slice(0, 19) ?? '无'}</b></span>
+      </div>
+
       {loading ? (
         <Loader2 className="spin" />
       ) : (
@@ -187,6 +223,8 @@ export default function Assignments() {
               <h3 className="section-title">{section.label}</h3>
               {sectionModels.map((m) => {
                 const draft = drafts[m.id] ?? emptyDraft();
+                const asnId = assignmentIdByModel[m.id];
+                const l4 = health.find((h) => h.assignment_id === asnId);
                 return (
                   <div className="assign-row">
                     <label className="assign-head">
@@ -197,6 +235,13 @@ export default function Assignments() {
                       />
                       <span>{m.display_name ?? m.model}</span>
                       <span className="mono dim">{providerName(m.provider_id)}</span>
+                      {l4 ? (
+                        <span className={`tag tag--${l4.ok ? 'ok' : 'fail'}`}>
+                          L4 {l4.ok ? `${l4.latency_ms}ms` : l4.error_code}
+                        </span>
+                      ) : (
+                        <span className="tag">L4 未测</span>
+                      )}
                     </label>
                     {draft.checked && (
                       <div className="assign-fields">
