@@ -8,11 +8,19 @@ export class ConfigError extends Error {
   }
 }
 
+export type AdminRole = 'owner' | 'operator';
+
 export interface HubConfig {
   /** Master key for envelope encryption (W1-3 derives the AES key). */
   masterKey: string;
-  /** Fixed admin password for the console session login. */
+  /** Owner (full-access) console username. */
+  ownerUsername: string;
+  /** Owner console password. */
   adminPassword: string;
+  /** Operator (read-only) console username. */
+  operatorUsername: string;
+  /** Operator password; unset means the operator account is disabled. */
+  operatorPassword?: string;
   /** TCP port the HTTP server binds. */
   port: number;
   /** Directory for the SQLite database, cached projections, and key material. */
@@ -39,6 +47,9 @@ export function loadConfig(
   const devNoAuth = env.HUB_DEV_NO_AUTH === '1';
   const masterKey = env.HUB_MASTER_KEY ?? '';
   const adminPassword = env.HUB_ADMIN_PASSWORD ?? '';
+  const ownerUsername = env.HUB_OWNER_USERNAME || 'owner';
+  const operatorUsername = env.HUB_OPERATOR_USERNAME || 'operator';
+  const operatorPassword = env.HUB_OPERATOR_PASSWORD || undefined;
 
   // Fail closed: the server must not start without secrets unless the
   // explicit local-development switch is set.
@@ -58,5 +69,14 @@ export function loadConfig(
   const port = parsePort(env.HUB_PORT);
   const dataDir = env.HUB_DATA_DIR || DEFAULT_DATA_DIR;
 
-  return { masterKey, adminPassword, port, dataDir, devNoAuth };
+  return {
+    masterKey,
+    ownerUsername,
+    adminPassword,
+    operatorUsername,
+    ...(operatorPassword ? { operatorPassword } : {}),
+    port,
+    dataDir,
+    devNoAuth,
+  };
 }

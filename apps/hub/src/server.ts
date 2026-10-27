@@ -16,7 +16,7 @@ if (applied.length > 0) {
   console.log(`migrations applied: ${applied.join(', ')}`);
 }
 
-const app = createApp(db);
+const app = createApp(config, db);
 
 serve({ fetch: app.fetch, port: config.port }, (info) => {
   const mode = config.devNoAuth ? ' (dev-no-auth)' : '';
