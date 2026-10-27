@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model-hub.local/schemas/health-check-request.json",
+  "title": "POST /pub/v1/health-checks request",
+  "description": "Project-reported L4 (or L3) connection test result.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project", "level", "ok", "latency_ms", "ts"],
+  "properties": {
+    "project": { "type": "string", "minLength": 1 },
+    "assignment_id": {
+      "type": ["string", "null"],
+      "pattern": "^asn_[a-zA-Z0-9_]+$"
+    },
+    "alias": { "type": ["string", "null"], "minLength": 1 },
+    "level": {
+      "type": "string",
+      "enum": ["L3", "L4"]
+    },
+    "ok": { "type": "boolean" },
+    "latency_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "error": {
+      "oneOf": [{ "$ref": "common.json#/$defs/error" }, { "type": "null" }]
+    },
+    "ts": { "$ref": "common.json#/$defs/timestamp" }
+  }
+}

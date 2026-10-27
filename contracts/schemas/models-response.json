@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model-hub.local/schemas/models-response.json",
+  "title": "GET /pub/v1/models response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project", "revision", "fetched_at", "models"],
+  "properties": {
+    "project": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Project slug this projection is bound to."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic catalog revision; used for ETag/304."
+    },
+    "fetched_at": { "$ref": "common.json#/$defs/timestamp" },
+    "models": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/model_projection" }
+    }
+  },
+  "$defs": {
+    "model_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assignment_id",
+        "role",
+        "modalities",
+        "model",
+        "protocol",
+        "base_url",
+        "api_key",
+        "endpoints",
+        "adapter",
+        "supports_json",
+        "supports_stream",
+        "pricing"
+      ],
+      "properties": {
+        "assignment_id": {
+          "type": "string",
+          "pattern": "^asn_[a-zA-Z0-9_]+$"
+        },
+        "alias": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "Project-unique alias; null when no alias is set."
+        },
+        "role": { "$ref": "common.json#/$defs/role" },
+        "modalities": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "common.json#/$defs/modality" },
+          "uniqueItems": true
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Model ID sent to the provider API."
+        },
+        "litellm_id": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "LiteLLM naming (e.g. openai/model) for Python projects."
+        },
+        "display_name": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "protocol": { "$ref": "common.json#/$defs/protocol" },
+        "base_url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "API root without the endpoint path."
+        },
+        "api_key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Plaintext provider key; projects call providers directly."
+        },
+        "endpoints": { "$ref": "common.json#/$defs/endpoints" },
+        "adapter": { "$ref": "common.json#/$defs/adapter" },
+        "context_window": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "supports_json": { "type": "boolean" },
+        "supports_stream": { "type": "boolean" },
+        "daily_budget_micros": { "$ref": "common.json#/$defs/nullable_micros" },
+        "pricing": {
+          "oneOf": [{ "$ref": "common.json#/$defs/pricing" }, { "type": "null" }]
+        }
+      }
+    }
+  }
+}

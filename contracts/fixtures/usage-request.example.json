@@ -1,0 +1,17 @@
+{
+  "project": "zeus",
+  "feature": "noul",
+  "billing_source": "builtin",
+  "billing_type": "subscription",
+  "provider": "ark-plan",
+  "model": "ark-code-latest",
+  "assignment_id": "asn_0001noul",
+  "input_tokens": 120,
+  "output_tokens": 48,
+  "cache_read_tokens": 0,
+  "reasoning_tokens": 20,
+  "quantity": 1,
+  "http_status": 200,
+  "cached": false,
+  "ts": "2026-10-27T10:01:23Z"
+}

@@ -1,0 +1,80 @@
+{
+  "project": "zeus",
+  "revision": 42,
+  "fetched_at": "2026-10-27T10:00:00Z",
+  "models": [
+    {
+      "assignment_id": "asn_0001noul",
+      "alias": "noul",
+      "role": "primary",
+      "modalities": ["text"],
+      "model": "ark-code-latest",
+      "litellm_id": null,
+      "display_name": "Ark Code Latest (Plan)",
+      "protocol": "openai-compatible",
+      "base_url": "https://ark.cn-beijing.volces.com/api/plan/v3",
+      "api_key": "PLACEHOLDER_KEY_NOT_REAL_0001",
+      "endpoints": { "chat": "/chat/completions" },
+      "adapter": null,
+      "context_window": 256000,
+      "supports_json": true,
+      "supports_stream": true,
+      "daily_budget_micros": 5000000,
+      "pricing": null
+    },
+    {
+      "assignment_id": "asn_0002score",
+      "alias": "score",
+      "role": "primary",
+      "modalities": ["text"],
+      "model": "doubao-seed-1-6-250615",
+      "litellm_id": "openai/doubao-seed-1-6-250615",
+      "display_name": "Doubao Seed 1.6",
+      "protocol": "openai-compatible",
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "api_key": "PLACEHOLDER_KEY_NOT_REAL_0002",
+      "endpoints": { "chat": "/chat/completions" },
+      "adapter": null,
+      "context_window": 256000,
+      "supports_json": true,
+      "supports_stream": true,
+      "daily_budget_micros": 3000000,
+      "pricing": {
+        "input_usd_per_million": 0.8,
+        "output_usd_per_million": 2.0,
+        "cache_read_usd_per_million": 0.1,
+        "per_image": null,
+        "per_second": null,
+        "per_kilo_char": null,
+        "per_mega_utf8_byte": null
+      }
+    },
+    {
+      "assignment_id": "asn_0003image",
+      "alias": null,
+      "role": "fallback",
+      "modalities": ["image"],
+      "model": "doubao-seedream-4-0-250828",
+      "litellm_id": "openai/doubao-seedream-4-0-250828",
+      "display_name": "Doubao Seedream 4.0",
+      "protocol": "openai-compatible",
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "api_key": "PLACEHOLDER_KEY_NOT_REAL_0003",
+      "endpoints": { "images": "/images/generations" },
+      "adapter": null,
+      "context_window": null,
+      "supports_json": false,
+      "supports_stream": false,
+      "daily_budget_micros": null,
+      "pricing": {
+        "input_usd_per_million": null,
+        "output_usd_per_million": null,
+        "cache_read_usd_per_million": null,
+        "per_image": 0.04,
+        "per_second": null,
+        "per_kilo_char": null,
+        "per_mega_utf8_byte": null
+      }
+    }
+  ]
+}

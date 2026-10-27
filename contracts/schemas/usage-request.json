@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model-hub.local/schemas/usage-request.json",
+  "title": "POST /pub/v1/usage request",
+  "description": "Append-only usage event. Raw units only; the hub computes cost from the issued prices. No prompt content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "project",
+    "feature",
+    "billing_source",
+    "provider",
+    "model",
+    "http_status",
+    "cached",
+    "ts"
+  ],
+  "properties": {
+    "project": { "type": "string", "minLength": 1 },
+    "feature": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Feature/alias the call is attributed to."
+    },
+    "billing_source": { "$ref": "common.json#/$defs/billing_source" },
+    "billing_type": { "$ref": "common.json#/$defs/billing_type" },
+    "provider": { "type": "string", "minLength": 1 },
+    "model": { "type": "string", "minLength": 1 },
+    "assignment_id": {
+      "type": ["string", "null"],
+      "pattern": "^asn_[a-zA-Z0-9_]+$"
+    },
+    "input_tokens": { "$ref": "common.json#/$defs/nonnegative_int" },
+    "output_tokens": { "$ref": "common.json#/$defs/nonnegative_int" },
+    "cache_read_tokens": { "$ref": "common.json#/$defs/nonnegative_int" },
+    "reasoning_tokens": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Reasoning tokens; counted within output billing."
+    },
+    "quantity": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Generic unit count (images, seconds, requests)."
+    },
+    "http_status": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 599
+    },
+    "cached": { "type": "boolean" },
+    "ts": { "$ref": "common.json#/$defs/timestamp" }
+  }
+}

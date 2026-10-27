@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model-hub.local/schemas/common.json",
+  "title": "Common definitions",
+  "$defs": {
+    "modality": {
+      "type": "string",
+      "enum": ["text", "image", "video", "audio", "embedding"]
+    },
+    "protocol": {
+      "type": "string",
+      "enum": ["openai-compatible", "anthropic", "gemini"]
+    },
+    "billing_type": {
+      "type": "string",
+      "enum": ["payg", "subscription"]
+    },
+    "billing_source": {
+      "type": "string",
+      "enum": ["builtin", "byok"]
+    },
+    "role": {
+      "type": "string",
+      "enum": ["primary", "fallback"]
+    },
+    "error_code": {
+      "type": "string",
+      "enum": [
+        "network",
+        "unauthorized",
+        "forbidden",
+        "model_not_found",
+        "rate_limited",
+        "server_error",
+        "dialect_mismatch"
+      ]
+    },
+    "nonnegative_int": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "nullable_micros": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "price": {
+      "type": "number",
+      "minimum": 0
+    },
+    "pricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input_usd_per_million": { "$ref": "#/$defs/nullable_price" },
+        "output_usd_per_million": { "$ref": "#/$defs/nullable_price" },
+        "cache_read_usd_per_million": { "$ref": "#/$defs/nullable_price" },
+        "per_image": { "$ref": "#/$defs/nullable_price" },
+        "per_second": { "$ref": "#/$defs/nullable_price" },
+        "per_kilo_char": { "$ref": "#/$defs/nullable_price" },
+        "per_mega_utf8_byte": { "$ref": "#/$defs/nullable_price" }
+      }
+    },
+    "nullable_price": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "endpoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "chat": { "type": "string", "minLength": 1 },
+        "images": { "type": "string", "minLength": 1 },
+        "videos": { "type": "string", "minLength": 1 },
+        "audio": { "type": "string", "minLength": 1 },
+        "embeddings": { "type": "string", "minLength": 1 }
+      }
+    },
+    "adapter": {
+      "type": ["object", "null"],
+      "description": "Non-standard dialect description (submit/poll/status/result paths and related fields).",
+      "additionalProperties": true,
+      "properties": {
+        "submit_path": { "type": "string" },
+        "poll_path": { "type": "string" },
+        "status_path": { "type": "string" },
+        "result_path": { "type": "string" },
+        "status_field": { "type": "string" },
+        "succeeded_values": { "type": "array", "items": { "type": "string" } },
+        "failed_values": { "type": "array", "items": { "type": "string" } },
+        "id_field": { "type": "string" },
+        "poll_interval_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": { "$ref": "#/$defs/error_code" },
+        "detail": { "type": "string" },
+        "hint": { "type": "string" }
+      }
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

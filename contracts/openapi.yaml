@@ -1,0 +1,138 @@
+openapi: 3.1.0
+info:
+  title: model-hub project-facing API
+  version: 0.1.0
+  summary: Catalog pull, usage and health-check endpoints consumed by projects.
+  description: >
+    Projects authenticate with a project token (Bearer). The hub is a control
+    plane only: it returns the projected catalog for the authenticated project;
+    projects then call model providers directly. This document covers the
+    project-facing /pub/v1 endpoints. Admin endpoints are documented separately.
+servers:
+  - url: https://model-hub.internal
+    description: Co-hosted intranet hub (Caddy HTTPS, Tailscale-only).
+  - url: http://localhost:8791
+    description: Local development.
+
+security:
+  - ProjectToken: []
+
+tags:
+  - name: catalog
+    description: Projected model catalog.
+  - name: reporting
+    description: Usage and connection-test reporting.
+
+paths:
+  /pub/v1/models:
+    get:
+      tags: [catalog]
+      summary: Pull the projected catalog for this project.
+      description: >
+        Returns every model assigned to the project (project, provider and model
+        all enabled), including the plaintext provider key, endpoints, adapter,
+        LiteLLM id, pricing and daily budget. Supports ETag/304 via revision.
+      operationId: getProjectModels
+      parameters:
+        - in: header
+          name: If-None-Match
+          required: false
+          schema:
+            type: string
+          description: >
+            Client's current ETag, e.g. "42". Returns 304 when the revision is
+            unchanged.
+      responses:
+        "200":
+          description: Projected catalog.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Opaque revision tag, e.g. "42".
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/models-response.json
+        "304":
+          description: Catalog unchanged; reuse the cached projection.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /pub/v1/usage:
+    post:
+      tags: [reporting]
+      summary: Append a usage event.
+      description: >
+        Append-only ingestion of raw usage units (no prompt content). The hub
+        computes cost from the prices issued at pull time. Failures must not
+        break the caller; clients should report asynchronously.
+      operationId: reportUsage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/usage-request.json
+      responses:
+        "202":
+          description: Accepted for append.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted: { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /pub/v1/health-checks:
+    post:
+      tags: [reporting]
+      summary: Report an L3/L4 connection-test result.
+      operationId: reportHealthCheck
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/health-check-request.json
+      responses:
+        "202":
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted: { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Invalid"
+
+components:
+  securitySchemes:
+    ProjectToken:
+      type: http
+      scheme: bearer
+      description: Project token issued on the hub project page.
+  responses:
+    Unauthorized:
+      description: Missing or invalid project token.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                $ref: ./schemas/common.json#/$defs/error
+    Invalid:
+      description: Request failed schema validation.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                $ref: ./schemas/common.json#/$defs/error
