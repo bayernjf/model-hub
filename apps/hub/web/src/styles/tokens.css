@@ -134,3 +134,13 @@ input, select, textarea {
 .token-plain { background: var(--steel-900); border: var(--hair); padding: 12px; border-radius: 6px; word-break: break-all; font-size: 12px; }
 .token-list { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; }
 .token-item { display: flex; align-items: center; gap: 12px; padding: 6px 8px; }
+
+/* Assignments */
+.section-title { margin: 0 0 10px; font-size: 13px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.assign-row { border-bottom: var(--hair); padding: 8px 0; }
+.assign-row:last-child { border-bottom: none; }
+.assign-head { display: flex; align-items: center; gap: 10px; }
+.assign-fields { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0 4px 26px; }
+.mini-field { display: flex; flex-direction: column; gap: 4px; }
+.mini-field span { font-size: 11px; color: var(--ink-faint); }
+.mini-field input, .mini-field select { padding: 6px 8px; font-size: 12px; }
