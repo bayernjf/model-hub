@@ -181,8 +181,8 @@ export class HealthCheckRepository {
     };
   }
 
-  // Latest health row per assignment (for the assignment dashboard).
-  latestByProject(projectId: string): HealthCheckView[] {
+  // Latest health row per (project, assignment), optionally scoped.
+  private latest(projectId?: string): HealthCheckView[] {
     const rows = this.db
       .prepare(
         `SELECT h.* FROM health_checks h
@@ -193,10 +193,10 @@ export class HealthCheckRepository {
                   OR (h2.assignment_id IS NULL AND h.assignment_id IS NULL))
            ORDER BY h2.ts DESC LIMIT 1
          )
-         AND h.project_id = ?
-         ORDER BY h.ts DESC`,
+         ${projectId ? 'AND h.project_id = ?' : ''}
+         ORDER BY h.project_id, h.ts DESC`,
       )
-      .all(projectId) as unknown as Array<{
+      .all(...(projectId ? [projectId] : [])) as unknown as Array<{
       id: string;
       project_id: string;
       assignment_id: string | null;
@@ -208,5 +208,13 @@ export class HealthCheckRepository {
       ts: string;
     }>;
     return rows.map((r) => ({ ...r, ok: r.ok === 1 }));
+  }
+
+  latestByProject(projectId: string): HealthCheckView[] {
+    return this.latest(projectId);
+  }
+
+  latestAll(): HealthCheckView[] {
+    return this.latest();
   }
 }

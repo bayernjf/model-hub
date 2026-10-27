@@ -18,6 +18,7 @@ import { providerRoutes } from './routes/admin/providers.js';
 import { projectRoutes } from './routes/admin/projects.js';
 import { modelRoutes } from './routes/admin/models.js';
 import { assignmentRoutes } from './routes/admin/assignments.js';
+import { adminHealthRoutes } from './routes/admin/health.js';
 import { sessionRoutes } from './routes/admin/session.js';
 import { pubRoutes } from './routes/pub.js';
 
@@ -63,6 +64,10 @@ export function createApp(config: HubConfig, db: DatabaseSync): Hono {
   app.route(
     '/api/admin/assignments',
     assignmentRoutes(config, db, assignmentRepo, revision),
+  );
+  app.route(
+    '/api/admin',
+    adminHealthRoutes(config, healthRepo, revision),
   );
   app.route(
     '/',
