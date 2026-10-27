@@ -18,3 +18,4 @@ node_modules/
 
 # OS/editor
 .DS_Store
+*.egg-info/
