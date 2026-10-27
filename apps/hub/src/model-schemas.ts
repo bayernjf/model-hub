@@ -1,11 +1,12 @@
 /**
  * Zod schemas for model import, manual entry and the owner overlay.
  *
- * The overlay write boundary is strict: only the five owner-editable fields
- * (modalities, pricing, enabled, is_default, sort_order) are accepted. Every
- * credential or interface-dialect field — model, base_url, api_key, protocol,
- * endpoints, adapter, litellm_id — is rejected here so it cannot be written
- * through the catalog layer. Credentials live on the provider entity.
+ * The overlay write boundary is strict: only the six owner-editable fields
+ * (modalities, pricing, enabled, is_default, sort_order, reasoning) are
+ * accepted. Every credential or interface-dialect field — model, base_url,
+ * api_key, protocol, endpoints, adapter, litellm_id — is rejected here so it
+ * cannot be written through the catalog layer. Credentials live on the
+ * provider entity.
  */
 import { z } from 'zod';
 
@@ -68,6 +69,7 @@ export const ModelOverlayPatchSchema = z
     enabled: z.boolean().optional(),
     is_default: z.boolean().optional(),
     sort_order: z.number().int().min(0).optional(),
+    reasoning: z.boolean().optional(),
   })
   .strict();
 export type ModelOverlayPatch = z.infer<typeof ModelOverlayPatchSchema>;
@@ -88,6 +90,7 @@ export const ManualModelCreateSchema = z
     is_default: z.boolean().optional(),
     sort_order: z.number().int().min(0).optional(),
     enabled: z.boolean().optional(),
+    reasoning: z.boolean().optional(),
   })
   .strict();
 export type ManualModelCreate = z.infer<typeof ManualModelCreateSchema>;

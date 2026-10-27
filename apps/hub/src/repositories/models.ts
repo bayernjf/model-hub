@@ -29,6 +29,7 @@ interface ModelRow {
   is_default: number;
   sort_order: number;
   enabled: number;
+  reasoning: number;
   created_at: string;
   updated_at: string;
 }
@@ -50,6 +51,7 @@ export interface ModelView {
   is_default: boolean;
   sort_order: number;
   enabled: boolean;
+  reasoning: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -101,6 +103,7 @@ function toView(row: ModelRow): ModelView {
     is_default: row.is_default === 1,
     sort_order: row.sort_order,
     enabled: row.enabled === 1,
+    reasoning: row.reasoning === 1,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -163,6 +166,7 @@ export class ModelRepository {
     isDefault: boolean;
     sortOrder: number;
     enabled: boolean;
+    reasoning: boolean;
   }): ModelView {
     const id = newId('mdl');
     const now = nowIso();
@@ -172,8 +176,8 @@ export class ModelRepository {
            (id, provider_id, preset_model_id, model, display_name, modalities,
             litellm_id, context_window, supports_json, supports_stream, pricing,
             endpoints_override, adapter, is_default, sort_order, enabled,
-            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            reasoning, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -192,6 +196,7 @@ export class ModelRepository {
         params.isDefault ? 1 : 0,
         params.sortOrder,
         params.enabled ? 1 : 0,
+        params.reasoning ? 1 : 0,
         now,
         now,
       );
@@ -242,6 +247,7 @@ export class ModelRepository {
           isDefault: false,
           sortOrder: imported.length,
           enabled: false, // imported models are not enabled by default
+          reasoning: presetModel.reasoning ?? false,
         }),
       );
     }
@@ -270,6 +276,7 @@ export class ModelRepository {
       isDefault: input.is_default ?? false,
       sortOrder: input.sort_order ?? 0,
       enabled: input.enabled ?? false,
+      reasoning: input.reasoning ?? false,
     });
   }
 
@@ -293,6 +300,8 @@ export class ModelRepository {
       assign('is_default', patch.is_default ? 1 : 0);
     if (patch.sort_order !== undefined)
       assign('sort_order', patch.sort_order);
+    if (patch.reasoning !== undefined)
+      assign('reasoning', patch.reasoning ? 1 : 0);
 
     if (sets.length > 0) {
       sets.push('updated_at = ?');
