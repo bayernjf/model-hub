@@ -1,0 +1,64 @@
+---
+import '../styles/tokens.css';
+import { APP_TITLE } from '../consts';
+---
+
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>登录 · {APP_TITLE}</title>
+  </head>
+  <body>
+    <div class="login-wrap">
+      <form class="panel login-card" id="login-form">
+        <div class="brand"><span class="brand-mark">◆</span> model-hub</div>
+        <h1>统一模型管理中心</h1>
+        <label class="field">
+          <span>账号</span>
+          <input name="username" autocomplete="username" required />
+        </label>
+        <label class="field">
+          <span>密码</span>
+          <input name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <div class="error" id="login-error" role="alert" hidden></div>
+        <button class="btn btn--primary" type="submit">登录</button>
+      </form>
+    </div>
+    <script>
+      const next = new URLSearchParams(window.location.search).get('next') ?? '/providers';
+      const form = document.getElementById('login-form') as HTMLFormElement;
+      const errorEl = document.getElementById('login-error') as HTMLDivElement;
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = new FormData(form);
+        const res = await fetch('/api/admin/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: String(data.get('username') ?? ''),
+            password: String(data.get('password') ?? ''),
+          }),
+        });
+        if (res.ok) {
+          window.location.href = next;
+        } else {
+          errorEl.textContent = '登录失败：账号或密码错误';
+          errorEl.hidden = false;
+        }
+      });
+    </script>
+    <style>
+      .login-wrap { min-height: 100vh; display: grid; place-items: center;
+        background: radial-gradient(circle at 50% 20%, var(--steel-800), var(--steel-950) 70%); }
+      .login-card { width: 360px; display: flex; flex-direction: column; gap: 12px; }
+      .brand { font-family: var(--mono); font-weight: 700; color: var(--data); }
+      .brand-mark { color: var(--power); }
+      .login-card h1 { font-size: 15px; margin: 0 0 8px; color: var(--ink-dim); font-weight: 500; }
+      .field { display: flex; flex-direction: column; gap: 6px; }
+      .field span { color: var(--ink-faint); font-size: 12px; }
+      .error { color: var(--alert); font-size: 13px; }
+    </style>
+  </body>
+</html>

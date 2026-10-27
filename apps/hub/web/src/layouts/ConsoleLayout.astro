@@ -1,0 +1,86 @@
+---
+import '../styles/tokens.css';
+import { APP_TITLE, NAV_ITEMS } from '../consts';
+
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+const currentPath = Astro.url.pathname;
+---
+
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} · {APP_TITLE}</title>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">◆</span>
+          <span class="brand-text">model-hub</span>
+        </div>
+        <nav>
+          {NAV_ITEMS.map((item) => (
+            <a
+              class:list={['nav-item', { active: currentPath.startsWith(item.href) }]}
+              href={item.href}
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
+        <div class="sidebar-foot">
+          <div class="user" id="user-box" hidden>
+            <span class="user-name" id="user-name"></span>
+          </div>
+          <button class="btn btn--ghost" id="logout-btn">退出</button>
+        </div>
+      </aside>
+      <main class="content">
+        <header class="page-head">
+          <h1>{title}</h1>
+        </header>
+        <slot />
+      </main>
+    </div>
+    <script>
+      const logoutBtn = document.getElementById('logout-btn');
+      logoutBtn?.addEventListener('click', async () => {
+        await fetch('/api/admin/session', { method: 'DELETE' });
+        window.location.href = '/login';
+      });
+    </script>
+    <style>
+      .shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+      .sidebar {
+        background: var(--steel-900);
+        border-right: var(--hair);
+        padding: 18px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .brand { display: flex; align-items: center; gap: 8px; padding: 4px 8px 16px; }
+      .brand-mark { color: var(--power); font-size: 18px; }
+      .brand-text { font-family: var(--mono); font-weight: 700; letter-spacing: 0.04em; }
+      .nav-item {
+        display: block;
+        padding: 9px 10px;
+        border-radius: 6px;
+        color: var(--ink-dim);
+        text-decoration: none;
+        font-size: 13px;
+      }
+      .nav-item:hover { background: var(--steel-800); color: var(--ink); }
+      .nav-item.active { background: var(--steel-800); color: var(--data); border-left: 2px solid var(--data); }
+      .sidebar-foot { margin-top: auto; padding-top: 12px; border-top: var(--hair); }
+      .user { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 10px; }
+      .user-name { font-family: var(--mono); font-size: 13px; }
+      .content { padding: 22px 28px; max-width: 1280px; }
+      .page-head h1 { font-size: 18px; margin: 0 0 18px; font-weight: 600; }
+    </style>
+  </body>
+</html>

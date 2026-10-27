@@ -1,0 +1,30 @@
+{
+  "name": "@model-hub/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Astro SSR admin console for model-hub, with React islands.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1 --port 8792",
+    "start": "node dist/server/entry.mjs",
+    "build": "astro build",
+    "typecheck": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/node": "^11.1.9",
+    "@astrojs/react": "^5.0.0",
+    "astro": "7.2.10",
+    "lucide-react": "^0.469.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5"
+  }
+}
