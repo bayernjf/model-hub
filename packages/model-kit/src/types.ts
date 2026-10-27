@@ -22,10 +22,23 @@ export interface EndpointSet {
   audio?: string | undefined;
 }
 
+// Non-standard dialect description. The wire contract keeps this object open
+// (additionalProperties: true); the fields below are the known dialect keys.
 export interface AdapterConfig {
-  request_style?: string | undefined;
-  dialect?: string | undefined;
-  video_adapter?: string | undefined;
+  submit_path?: string | undefined;
+  poll_path?: string | undefined;
+  status_path?: string | undefined;
+  result_path?: string | undefined;
+  status_field?: string | undefined;
+  succeeded_values?: string[] | undefined;
+  failed_values?: string[] | undefined;
+  id_field?: string | undefined;
+  poll_interval_ms?: number | undefined;
+  retrieval_url_template?: string | undefined;
+  result_url_path?: string | undefined;
+  duration_path?: string | undefined;
+  seconds_field?: string | undefined;
+  [key: string]: unknown;
 }
 
 // One entry in GET /pub/v1/models.

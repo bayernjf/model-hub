@@ -288,6 +288,7 @@ export async function initModelKit(
 }
 
 export type {
+  AdapterConfig,
   BillingSource,
   CatalogResponse,
   DriverFactory,
