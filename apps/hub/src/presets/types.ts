@@ -36,13 +36,13 @@ export type BillingType = (typeof BILLING_TYPES)[number];
  * declares a free model. Mirrors the contract `pricing` object.
  */
 export interface Pricing {
-  input_usd_per_million?: number | null;
-  output_usd_per_million?: number | null;
-  cache_read_usd_per_million?: number | null;
-  per_image?: number | null;
-  per_second?: number | null;
-  per_kilo_char?: number | null;
-  per_mega_utf8_byte?: number | null;
+  input_usd_per_million?: number | null | undefined;
+  output_usd_per_million?: number | null | undefined;
+  cache_read_usd_per_million?: number | null | undefined;
+  per_image?: number | null | undefined;
+  per_second?: number | null | undefined;
+  per_kilo_char?: number | null | undefined;
+  per_mega_utf8_byte?: number | null | undefined;
 }
 
 /**
@@ -50,11 +50,11 @@ export interface Pricing {
  * Mirrors the contract `endpoints` object.
  */
 export interface EndpointSet {
-  chat?: string;
-  images?: string;
-  videos?: string;
-  audio?: string;
-  embeddings?: string;
+  chat?: string | undefined;
+  images?: string | undefined;
+  videos?: string | undefined;
+  audio?: string | undefined;
+  embeddings?: string | undefined;
 }
 
 /**
