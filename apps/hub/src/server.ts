@@ -1,14 +1,16 @@
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
+import { loadConfig } from './config.js';
+import { ensureDataDir } from './storage/ensure-data-dir.js';
 
-const port = Number(process.env.HUB_PORT ?? 8791);
-
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  throw new Error(`invalid HUB_PORT: ${process.env.HUB_PORT ?? ''}`);
-}
+const config = loadConfig();
+ensureDataDir(config.dataDir);
 
 const app = createApp();
 
-serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`model-hub listening on http://localhost:${info.port}`);
+serve({ fetch: app.fetch, port: config.port }, (info) => {
+  const mode = config.devNoAuth ? ' (dev-no-auth)' : '';
+  console.log(
+    `model-hub listening on http://localhost:${info.port}${mode}, data=${config.dataDir}`,
+  );
 });
