@@ -15,7 +15,7 @@ import {
 } from '../../repositories/models.js';
 import type { ProviderRepository } from '../../repositories/providers.js';
 import { SlidingWindowRateLimiter } from '../../rate-limit.js';
-import { testProvider } from '../../connection-test.js';
+import { testProvider, testModel } from '../../connection-test.js';
 import { PRESET_CATALOG } from '../../presets/index.js';
 import {
   ImportModelsSchema,
@@ -74,6 +74,54 @@ export function modelRoutes(
       action: 'provider.test',
       targetType: 'provider',
       targetId: providerId,
+      result: result.ok ? 'success' : 'failure',
+      ip: clientIp(c),
+    });
+
+    return c.json(result);
+  });
+
+  // L2 single-model connection test. Pass ?deep=true to perform a paid
+  // generation; the UI must confirm the cost before doing so.
+  routes.post('/models/:id/test', requireOwner(), async (c) => {
+    const modelId = c.req.param('id');
+    const model = repo.get(modelId);
+    if (!model) return c.json({ error: { code: 'not_found' } }, 404);
+
+    if (!rateLimiter.allow(clientIp(c))) {
+      return c.json(
+        { error: { code: 'rate_limited', hint: '每小时最多 20 次测试' } },
+        429,
+      );
+    }
+
+    const provider = providerRepo.get(model.provider_id);
+    if (!provider) return c.json({ error: { code: 'not_found' } }, 404);
+
+    const apiKey = providerRepo.revealKey(provider.id);
+    if (!apiKey) {
+      return c.json({
+        ok: false,
+        latency_ms: 0,
+        scope: 'model',
+        error: { code: 'unauthorized', hint: '尚未配置 API key' },
+      });
+    }
+
+    const deep = c.req.query('deep') === 'true';
+    const result = await testModel({
+      base_url: provider.base_url,
+      api_key: apiKey,
+      billing_type: provider.billing_type,
+      model,
+      deep,
+    });
+
+    writeAudit(db, {
+      actor: actorOf(c),
+      action: 'model.test',
+      targetType: 'model',
+      targetId: modelId,
       result: result.ok ? 'success' : 'failure',
       ip: clientIp(c),
     });
