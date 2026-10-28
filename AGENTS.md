@@ -89,4 +89,5 @@ npm run check:all        # typecheck + lint + test + build 串行
 - 原子提交，英文 Conventional Commits（subject ≤ 50 字符、带 body），
   配置/功能/测试/文档分开提交，不加 AI co-author。
 - 未明确授权前不 push；model-kit 以 **Git 标签依赖**（`git+ssh://…#vX.Y.Z`）
-  被消费，semver 锁定，不建私有 registry。
+  被消费，semver 锁定，不建私有 registry；具体消费坐标、pnpm `path:`
+  子目录语法与发布流程见 [RELEASING.md](./RELEASING.md)。
