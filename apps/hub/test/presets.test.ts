@@ -14,7 +14,7 @@ describe('preset catalog', () => {
     expect(PRESET_CATALOG.sourcing_note.length).toBeGreaterThan(0);
   });
 
-  it('ships the five expected providers', () => {
+  it('ships the six expected providers', () => {
     const ids = listPresetProviders().map((p) => p.id);
     expect(ids).toEqual(
       expect.arrayContaining([
@@ -23,6 +23,7 @@ describe('preset catalog', () => {
         'agnes',
         'anthropic',
         'openai',
+        'openspeech',
       ]),
     );
   });
@@ -102,5 +103,19 @@ describe('preset catalog', () => {
         }
       }
     }
+  });
+
+  it('declares x-api-key auth and resource ids for voice models', () => {
+    const tts = getPresetModel('openspeech', 'seed-tts-2');
+    expect(tts?.adapter?.auth_style).toBe('x-api-key');
+    expect(tts?.adapter?.resource_id).toBe('seed-tts-2.0');
+    expect(tts?.adapter?.submit_path).toBeTruthy();
+
+    const asr = getPresetModel('openspeech', 'seed-asr-2-async');
+    expect(asr?.adapter?.auth_style).toBe('x-api-key');
+    expect(asr?.adapter?.resource_id).toBe('volc.seedasr.sauc.duration');
+
+    const nostream = getPresetModel('openspeech', 'seed-asr-2-nostream');
+    expect(nostream?.adapter?.nonstream).toBe(true);
   });
 });

@@ -395,5 +395,72 @@ export const PRESET_CATALOG: PresetCatalog = {
         },
       ],
     },
+
+    // ── ByteDance OpenSpeech (voice: TTS / ASR) ───────────────────────────
+    {
+      id: 'openspeech',
+      name: '火山 OpenSpeech（语音 TTS/ASR）',
+      protocol: 'openai-compatible',
+      billing_type: 'payg',
+      default_base_url: 'https://openspeech.bytedance.com',
+      key_label: 'OpenSpeech API Key（X-Api-Key 单头）',
+      models: [
+        {
+          id: 'seed-tts-2',
+          model: 'seed-tts-2.0',
+          display_name: '豆包语音合成 Seed TTS 2.0',
+          modalities: ['audio'],
+          supports_json: false,
+          supports_stream: false,
+          // Real per-character price not yet confirmed; owner must fill before
+          // billing. HTTP path verified 2026-10-29 (real MP3 synthesis).
+          pricing: {},
+          endpoints: { audio: '/api/v3/plan/tts/unidirectional' },
+          adapter: {
+            auth_style: 'x-api-key',
+            resource_id: 'seed-tts-2.0',
+            submit_path: '/api/v3/plan/tts/unidirectional',
+            create_body: {
+              speaker: 'zh_female_vv_uranus_bigtts',
+              audio_params: { format: 'mp3', sample_rate: 24000 },
+            },
+          },
+          note: '音色必须 uranus_bigtts 系列；chunked JSON 拼接 base64 为 MP3。',
+        },
+        {
+          id: 'seed-asr-2-async',
+          model: 'bigmodel',
+          display_name: '豆包语音识别 Seed ASR（双流）',
+          modalities: ['audio'],
+          supports_json: false,
+          supports_stream: false,
+          // Real per-second price not yet confirmed; owner must fill before
+          // billing. WebSocket-only; not yet exercised against a real key.
+          pricing: {},
+          adapter: {
+            auth_style: 'x-api-key',
+            resource_id: 'volc.seedasr.sauc.duration',
+            submit_path: '/api/v3/plan/sauc/bigmodel_async',
+          },
+          note: '双流实时转写；WAV PCM 16kHz/16bit/单声道。',
+        },
+        {
+          id: 'seed-asr-2-nostream',
+          model: 'bigmodel',
+          display_name: '豆包语音识别 Seed ASR（单流）',
+          modalities: ['audio'],
+          supports_json: false,
+          supports_stream: false,
+          pricing: {},
+          adapter: {
+            auth_style: 'x-api-key',
+            resource_id: 'volc.seedasr.sauc.duration',
+            submit_path: '/api/v3/plan/sauc/bigmodel_nostream',
+            nonstream: true,
+          },
+          note: '单流准确率优先，全部发完或 15s 后统一返回。',
+        },
+      ],
+    },
   ],
 };
