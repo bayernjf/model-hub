@@ -367,6 +367,20 @@ async function probeVideoSubmit(
 ): Promise<TestResult> {
   const path = model.endpoints_override?.videos ?? '/videos';
   const start = Date.now();
+  // Video submit bodies differ per provider: the default is {model, prompt, duration};
+  // an adapter supplies create_body / seconds_field / omit_duration for its dialect
+  // (Agnes uses seconds + mode + size and rejects a `duration` field).
+  const adapter = model.adapter;
+  const body: Record<string, unknown> = { model: model.model, prompt: 'test' };
+  if (adapter?.create_body) Object.assign(body, adapter.create_body);
+  if (!adapter?.omit_duration) {
+    const durField = adapter?.seconds_field ?? 'duration';
+    const [lo, hi] = adapter?.seconds_range ?? [4, 12];
+    const durValue = adapter?.seconds_field
+      ? String(Math.min(hi, Math.max(lo, 5)))
+      : 1;
+    body[durField] = durValue;
+  }
   try {
     const res = await fetchImpl(joinUrl(baseUrl, path), {
       method: 'POST',
@@ -374,7 +388,7 @@ async function probeVideoSubmit(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ model: model.model, prompt: 'test', duration: 1 }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
     const latency = Date.now() - start;

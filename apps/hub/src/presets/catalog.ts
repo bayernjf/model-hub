@@ -219,7 +219,7 @@ export const PRESET_CATALOG: PresetCatalog = {
             seconds_range: [4, 12],
             aspect_as_ratio: true,
             max_n: 1,
-            create_body: { size: '720P' },
+            create_body: { size: '720P', mode: 'text' },
           },
         },
       ],
