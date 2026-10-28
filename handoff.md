@@ -2,6 +2,28 @@
 
 本文件记录 M7 收尾的工程进展；设计事实仍以 bayjf `docs/tier0/` 文档为准。
 
+## 2026-10-29 接力进展
+
+- ~~ASR 语音识别（WebSocket 二进制协议）~~：**已完成**。`packages/model-kit/src/asr.ts`
+  实现 SAUC 二进制帧（4B header + BE seq + BE payload size + gzip payload）、
+  WAV PCM 解析、X-Api-Key 握手、分块上传、负序收尾包，`ModelKit.asr()` 接入。
+  新增 `ws` 依赖（Node 全局 WebSocket 不支持握手自定义头）。9 个新测试
+  （含本地真实 ws server 集成），check:all 23 files / 167 tests 全绿。
+  原子提交：`chore ws 依赖` / `feat ASR 驱动` / `test ASR 测试`（8c6db28、9ac00ff、502af38）。
+- ~~代码质量评审~~：**已完成**。后端（config/crypto/auth/repositories/routes/
+  projection/revision/audit）、web islands、migrations、python client、contracts
+  全部过一遍。整体质量高（见下方评审结论），发现并修复 4 类问题。
+- ~~评审问题修复~~：**已完成**，check:all 23 files / 168 tests 全绿。4 个原子提交：
+  - `72cfd26` feat(hub): 登录端点加暴力破解限流（10 次失败/15 分钟/IP）
+  - `e6cd44d` feat(hub): AdapterDialect/Schema 补 auth_style/resource_id/nonstream
+  - `3774320` feat(hub): 新增 openspeech 语音 preset（TTS + ASR 双流/单流）
+  - `421f9ba` fix(web): 补 admin islands 缺失的 React keys
+- ~~临时资源清理~~：**已完成**。停 cloudflared 隧道（PID 78933）；`docker compose down`
+  移除 model-hub（含 backup sidecar）与 commerce-os 容器及网络（**保留 named volume 与
+  ./backups**）；删除 /tmp 下 mhub-*、hub-server.log、sf-tunnel.log、sf13/sf14 db、
+  cloudflared-bin/tgz。infra-* 容器未触碰。
+- 后续任务清单：见文末「后续待推进任务」。
+
 ## 已完成（任务10–17）
 
 - **W2-3 L1 / W2-4 L2 测试真实验证**：本地 hub（8791）建 Agnes-本机 provider，
@@ -70,3 +92,41 @@
 3. zeus 是 npm 项目、不支持 git 标签子目录依赖，暂留 `file:` 兄弟依赖（RELEASING.md 已记录）。
 4. zeus ZEUS_DECISION_*（Jev 专用决策模型）未在 hub 注册，W7-3 仅下线 agnes 直连线；
    若 Jev 也要迁 hub 需另立模型条目。
+
+## 代码质量评审结论（2026-10-29）
+
+**总体评价：高。** 安全边界清晰、分层一致、测试扎实，无明显高危漏洞。
+
+做得好的地方（应保持）：
+
+- 所有 SQL 全占位符；动态 UPDATE 只拼接硬编码列名，无注入面。
+- 密钥信封加密 AES-256-GCM，每条记录随机 IV；项目 token 只存 SHA-256。
+- session token 用 HMAC 常量时间比较；数据文件强制 0700/0600；配置 fail-closed。
+- owner overlay 写入走 zod `.strict()` 严格 allow-list，凭证/方言字段无法经 catalog 写入。
+- 成本聚合 byok 只计量、不算 owner 成本；schema 索引与外键设计合理。
+- 无 XSS sink（无 dangerouslySetInnerHTML/eval/innerHTML）。
+
+已修复（见上）：登录无限流、方言类型缺语音字段、preset 缺语音 provider、React keys。
+
+遗留（非阻塞，见后续任务）：clientIp 无 XFF 时回退 127.0.0.1（单机单用户可接受，
+上反代后需确认信任链）。~~admin 端点未入契约~~ 已补齐（admin-openapi.yaml）。
+
+## 后续待推进任务
+
+按优先级排列；标注【受阻】的需要 owner 输入或外部条件，其余可直接做。
+
+1. 【受阻】pricing 真实价格：成本看板要算准，需 owner 提供各模态真实单价
+   （TTS 按千字符、ASR 按秒、视频按秒/分辨率档位）。当前语音 preset 价格留空。
+2. 【受阻】云服务器迁移：最终方案，需 owner 确认服务器资源与时间；要点见
+   DEPLOYMENT.md §「云服务器迁移」（原 hasee-2016-server 不可用）。
+3. ASR 真实联调：当前仅 mock + 本地 ws server 测试，需用真实 key 跑通双流/单流。
+   真实 key 已保存在 named volume `model-hub_model-hub-data`，起容器即可测。
+4. TTS 真实联调：HTTP 已真实合成过 MP3，可再补一次端到端回归并固化音色。
+5. 视频 Agnes 真实生成复测：队列曾满（video_queue_full），待平台恢复后 deep 复测；
+   probeVideoSubmit 已按方言适配（create_body/seconds_field/omit_duration）。
+6. ZEUS_DECISION_*（Jev 决策模型）在 hub 注册模型条目（若 Jev 也迁 hub）；
+   受阻于 Jev base URL/key，且其 /decide 为非标准方言，需另立 provider。
+7. （可选）登录失败计数持久化到 DB，支持多实例共享限流（当前为进程内内存）。
+
+已在本轮推进：~~admin 端点补进 OpenAPI 契约~~（新增 `contracts/admin-openapi.yaml`，
+18 paths / 29 operations，已交叉引用）。
