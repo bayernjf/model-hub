@@ -21,12 +21,15 @@
   （实跑投影 revision 16、content→agnes-3.0-flash、video→agnes-video-2.5-flash）。
   两仓 208+ 相关测试全绿。
 - **W7-5 部署**：Dockerfile 补齐 Astro web（原镜像会缺 entry.mjs 起不来）；
-  compose 加 backup sidecar（sqlite3 .backup + 7 天保留）；DEPLOYMENT.md 运行手册。
+  compose 加 backup sidecar（7 天保留）；DEPLOYMENT.md 运行手册。**2026-10-28 本机
+  Docker 实测全绿**：镜像构建 + 容器 healthy + healthz 200 + 备份快照 + 模型拉取
+  （admin 登录→建项目→签发 token→`pub/v1/models` 200）。真实部署暴露并修复 5 个
+  缺陷（Dockerfile syntax 行/db COPY/npm ci ignore-scripts、.dockerignore web、
+  model-kit prepare 容错、backup sidecar sqlite3→node:sqlite），拆 2 个原子提交。
 
 ## 分支与提交
 
-- model-hub：`feature/m7-wrapup`（未 push，按约束仅任务17 部署相关 push；
-  本机 Docker 守护进程未运行，镜像构建/起容器受阻，见开放点②）。
+- model-hub：`feature/m7-wrapup`（已 push：`cfdbe64..ffdad5c`，含 W7-5 部署修复）。
 - zeus/loom：`feature/model-hub-integration`（未 push）。
 - growth-os：`feature/model-hub-optin`（未 push）。
 
@@ -40,8 +43,10 @@
 ## 开放点
 
 1. Ark Plan key 不在环境：L1 subscription 路径复跑受阻，需要 key 后重跑。
-2. W7-5 真实部署受阻：本机 Docker daemon 未运行；镜像构建/容器 healthz 未实测。
-   已用离线 `docker compose config` + 本机 node 进程 healthz/pub 拉取佐证。
+2. W7-5 生产宿主机部署待定：本机 MacBook Docker 已实测全绿（镜像构建 + healthz +
+   备份 + 模型拉取），制品可用。生产长驻部署改为**云服务器方案（最终选择，后续执行）**，
+   原 zeus/loom 同机宿主机（hasee-2016-server）暂不可用。迁移要点见 DEPLOYMENT.md
+   §「云服务器迁移」。
 3. zeus 是 npm 项目、不支持 git 标签子目录依赖，暂留 `file:` 兄弟依赖（RELEASING.md 已记录）。
 4. zeus ZEUS_DECISION_*（Jev 专用决策模型）未在 hub 注册，W7-3 仅下线 agnes 直连线；
    若 Jev 也要迁 hub 需另立模型条目。

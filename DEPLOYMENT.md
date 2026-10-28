@@ -87,3 +87,22 @@ ls -lh ./backups/
 
 厂商 key 只经管理台 UI 录入（加密入库），或开发期放在 gitignored 本地 env；
 禁止写入文档、提交历史、日志与构建产物。
+
+## 云服务器迁移（最终生产方案，后续执行）
+
+当前先用本机 MacBook Docker 长驻（`docker compose up -d --build`，loopback 8791）。
+最终迁移到云服务器时，制品已 Docker 化，迁移成本最低，只需：
+
+1. **迁移镜像**：`docker save model-hub:latest | gzip | ssh <cloud-host> 'gunzip | docker load'`
+   （或推到私有 registry 后 `docker pull`）。
+2. **迁移数据卷**：本机
+   `docker run --rm -v model-hub_model-hub-data:/data -v "$PWD":/bak alpine tar czf /bak/model-hub-data.tgz -C /data .`，
+   云主机解包到同名 volume（或直接 `scp` 备份快照恢复）。
+3. **配置**：云主机 `cp .env.example .env.local` 并重新生成
+   `HUB_MASTER_KEY` / `HUB_ADMIN_PASSWORD`（**不复制本机明文密钥**）。
+4. **启动**：同一份 `docker-compose.yml` 在云主机 `docker compose up -d --build`，
+   无需任何 Dockerfile/compose 改动。
+5. **反代/TLS**：compose 仍是 loopback 绑定不变，云主机用 Caddy 终止 HTTPS——
+   把 §拓扑 Caddy 片段的 `host.docker.internal:8791` 换成 `127.0.0.1:8791` 即可。
+
+迁移成本集中在第 5 步（域名 + TLS 证书），Docker 层面零改造。
