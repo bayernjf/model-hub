@@ -8,12 +8,14 @@
   实现 SAUC 二进制帧（4B header + BE seq + BE payload size + gzip payload）、
   WAV PCM 解析、X-Api-Key 握手、分块上传、负序收尾包，`ModelKit.asr()` 接入。
   新增 `ws` 依赖（Node 全局 WebSocket 不支持握手自定义头）。9 个新测试
-  （含本地真实 ws server 集成），check:all 23 files / 167 tests 全绿。
+  （含本地真实 ws server 集成），当轮记录 check:all 23 files / 167 tests；python 步骤
+  当时实际为红，见下「复核接力」。
   原子提交：`chore ws 依赖` / `feat ASR 驱动` / `test ASR 测试`（8c6db28、9ac00ff、502af38）。
 - ~~代码质量评审~~：**已完成**。后端（config/crypto/auth/repositories/routes/
   projection/revision/audit）、web islands、migrations、python client、contracts
   全部过一遍。整体质量高（见下方评审结论），发现并修复 4 类问题。
-- ~~评审问题修复~~：**已完成**，check:all 23 files / 168 tests 全绿。4 个原子提交：
+- ~~评审问题修复~~：**已完成**，Node 侧 23 files / 168 tests；python 步骤当时为红
+  （见下「复核接力」）。4 个原子提交：
   - `72cfd26` feat(hub): 登录端点加暴力破解限流（10 次失败/15 分钟/IP）
   - `e6cd44d` feat(hub): AdapterDialect/Schema 补 auth_style/resource_id/nonstream
   - `3774320` feat(hub): 新增 openspeech 语音 preset（TTS + ASR 双流/单流）
@@ -23,6 +25,26 @@
   ./backups**）；删除 /tmp 下 mhub-*、hub-server.log、sf-tunnel.log、sf13/sf14 db、
   cloudflared-bin/tgz。infra-* 容器未触碰。
 - 后续任务清单：见文末「后续待推进任务」。
+
+### 2026-10-29 复核接力（第二会话）
+
+前一轮的 9 个提交与分支状态（`feature/m7-wrapup`，9 unpushed / 0 behind）逐项复核一致，
+但有三处需要更正或补强：
+
+- **`check:all` 当时并不全绿**。在 `79fd2c2` 实测：Node 23 文件 / 168 用例通过，但
+  `test:python` 失败——`test_304_keeps_cached` 在 `exc.close()` 处抛
+  `KeyError: 'file'`。已在隔离 worktree 的基线 `a46d3ec` 复现，**不是本批引入**：
+  测试里 `HTTPError(..., fp=None)` 与真实 urllib 不符（真实 HTTPError 必带 fp），
+  只有 Xcode 自带的 Python 3.9.6 才暴露。修法是让假件忠实（`io.BytesIO(b"")`），
+  见 `bef90f9`。
+- **`72cfd26` 的登录限流可被绕过**。`clientIp()` 取 `X-Forwarded-For` 的**最左段**，
+  而 Caddy 把观测到的对端**追加在末尾**——攻击者每次换一个伪造首段就能拿到新桶，
+  10 次/15 分钟的预算永不累积，审计里的 IP 也是伪造的。改为取最右段（`2017736`），
+  并补 5 个用例（`e8bd0f2`）；其中两个在旧实现下必红（已植入缺陷实测验证）。
+- 该限流提交原本**没有任何测试**，本次一并补上。
+
+状态：`check:all` 全绿（**23 文件 / 173 用例** + Python 7 用例），工作区干净，
+**12 个提交待 owner 授权后 push**（AGENTS.md：「未明确授权前不 push」）。
 
 ## 已完成（任务10–17）
 
@@ -61,7 +83,8 @@
 
 ## 本地验证基线
 
-- model-hub `npm run check:all`：20 files / 153 tests 全绿。
+- model-hub `npm run check:all`：**23 files / 173 tests + Python 7 tests 全绿，exit 0**
+  （2026-10-29 第二会话实测；此前记录的 20 files / 153 tests 是 W7 之前的口径）。
 - zeus：typecheck + build 通过；20 个失败测试为 undici `invalid onError method`
   环境问题（Node 26），stash 基线同现，与本次改动无关。
 - loom：venv pytest，hub/content/registry 208 passed。
@@ -108,8 +131,10 @@
 
 已修复（见上）：登录无限流、方言类型缺语音字段、preset 缺语音 provider、React keys。
 
-遗留（非阻塞，见后续任务）：clientIp 无 XFF 时回退 127.0.0.1（单机单用户可接受，
-上反代后需确认信任链）。~~admin 端点未入契约~~ 已补齐（admin-openapi.yaml）。
+遗留（非阻塞，见后续任务）：~~clientIp 无 XFF 时回退 127.0.0.1，上反代后需确认信任链~~
+已按单跳 Caddy 取 `X-Forwarded-For` 的最右段（`2017736`）；若将来在前面再加一层可信
+反代，最右段会变成那层代理、所有客户端共用同一个限流桶，必须先把跳数钉进配置
+（见 `request.ts` 注释里的 flip condition）。~~admin 端点未入契约~~ 已补齐（admin-openapi.yaml）。
 
 ## 后续待推进任务
 
