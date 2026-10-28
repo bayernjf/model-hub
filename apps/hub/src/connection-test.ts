@@ -34,6 +34,9 @@ export interface TestResult {
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 export const TEST_TIMEOUT_MS = 15_000;
+// Image/video generation can legitimately take tens of seconds (a real
+// Seedream generation measured ~13.5s); the 15s chat timeout is too tight.
+export const GENERATION_TIMEOUT_MS = 60_000;
 
 function classifyStatus(status: number): ErrorCode {
   if (status === 401) return 'unauthorized';
@@ -474,7 +477,7 @@ export async function testModel(
         input.base_url,
         input.api_key,
         model,
-        TEST_TIMEOUT_MS,
+        GENERATION_TIMEOUT_MS,
         fetchImpl,
       );
     }
@@ -482,7 +485,7 @@ export async function testModel(
       input.base_url,
       input.api_key,
       model,
-      TEST_TIMEOUT_MS,
+      GENERATION_TIMEOUT_MS,
       fetchImpl,
     );
   }
