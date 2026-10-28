@@ -151,6 +151,78 @@ describe('admin audit', () => {
   });
 });
 
+describe('login brute-force guard', () => {
+  function attempt(
+    app: Hono,
+    password: string,
+    forwardedFor?: string,
+    username = 'owner',
+  ) {
+    return app.request('/api/admin/session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(forwardedFor === undefined ? {} : { 'X-Forwarded-For': forwardedFor }),
+      },
+      body: JSON.stringify({ username, password }),
+    });
+  }
+
+  it('locks a peer out after 10 failures and audits the denial', async () => {
+    const { app, db } = makeApp();
+    for (let i = 0; i < 10; i += 1) {
+      expect((await attempt(app, 'wrong', '203.0.113.7')).status).toBe(401);
+    }
+
+    const limited = await attempt(app, 'wrong', '203.0.113.7');
+    expect(limited.status).toBe(429);
+    const body = (await limited.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('rate_limited');
+
+    const denied = db
+      .prepare("SELECT count(*) AS n FROM admin_audit WHERE detail = 'rate_limited'")
+      .get() as { n: number };
+    expect(denied.n).toBe(1);
+  });
+
+  it('does not let a caller pick its own bucket with a spoofed X-Forwarded-For', async () => {
+    const { app } = makeApp();
+    // Caddy appends the peer it saw, so the real address stays right-most and a
+    // fresh left-hand entry per attempt must not buy a fresh budget.
+    let last = 0;
+    for (let i = 0; i < 11; i += 1) {
+      last = (await attempt(app, 'wrong', `198.51.100.${i}, 203.0.113.7`)).status;
+    }
+    expect(last).toBe(429);
+  });
+
+  it('keeps a separate bucket per real peer', async () => {
+    const { app } = makeApp();
+    for (let i = 0; i < 10; i += 1) {
+      await attempt(app, 'wrong', '203.0.113.7');
+    }
+    expect((await attempt(app, 'wrong', '203.0.113.7')).status).toBe(429);
+    expect((await attempt(app, 'wrong', '203.0.113.8')).status).toBe(401);
+  });
+
+  it('never throttles a successful login', async () => {
+    const { app } = makeApp();
+    for (let i = 0; i < 9; i += 1) {
+      await attempt(app, 'wrong', '203.0.113.9');
+    }
+    expect((await attempt(app, 'owner-password-123', '203.0.113.9')).status).toBe(200);
+  });
+
+  it('audits the resolved peer rather than a caller-supplied address', async () => {
+    const { app, db } = makeApp();
+    await attempt(app, 'wrong', '198.51.100.99, 203.0.113.7');
+    const row = db
+      .prepare("SELECT ip FROM admin_audit WHERE action = 'admin.login' ORDER BY id DESC")
+      .get() as { ip: string };
+    expect(row.ip).toBe('203.0.113.7');
+  });
+});
+
 describe('dev-no-auth mode', () => {
   it('grants a synthetic owner session on loopback', async () => {
     const config = loadConfig({
