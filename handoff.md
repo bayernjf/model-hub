@@ -9,7 +9,8 @@
   subscription 路径真实复跑成功**：Plan key 已由 owner 提供并经管理台录入，
   `ark-code-latest` L1 `ok`、`model_echo:"auto"`（订阅套餐特征）。图片模型
   `doubao-seedream-5.0-flash` L2 deep 真实生成 `ok`（~11s；顺带修复生成超时
-  15s→60s，见下方 fix(test) 提交）。
+  15s→60s，见下方 fix(test) 提交）。向量模型 `doubao-embedding-vision` L2 `ok`
+  （embedding 模态，~0.5s）。
 - **W4-1a 分发定案落码**：model-kit 随 monorepo 发版，消费方 Git 标签依赖
   （npm 不支持 monorepo 子目录、pnpm 需 `#vX.Y.Z&path:`、pip 需 `#subdirectory=`）。
   tag `v0.1.0` 已 push（bf5b2ab），从真实 remote 装通。
