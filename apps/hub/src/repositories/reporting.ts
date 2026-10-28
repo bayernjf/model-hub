@@ -62,6 +62,19 @@ export interface HealthCheckView {
   ts: string;
 }
 
+// One row of the W7-4 cost dashboard aggregation (project × source × day × model).
+export interface CostAggregateRow {
+  project: string;
+  billing_source: string;
+  day: string;
+  model: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  quantity: number;
+  cost_micros: number;
+}
+
 export class UsageRepository {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -138,6 +151,29 @@ export class UsageRepository {
       ts: string;
     }>;
     return rows;
+  }
+
+  // Raw aggregation for the read-only cost dashboard (W7-4). Groups by project
+  // slug × billing_source × day × model. byok rows carry no cost (owner does
+  // not pay for user keys); their volume is still summed for display.
+  aggregate(): CostAggregateRow[] {
+    return this.db
+      .prepare(
+        `SELECT p.slug AS project,
+                u.billing_source AS billing_source,
+                date(u.ts) AS day,
+                u.model AS model,
+                COUNT(*) AS calls,
+                COALESCE(SUM(u.input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(u.quantity), 0) AS quantity,
+                COALESCE(SUM(u.cost_micros), 0) AS cost_micros
+         FROM usage_events u
+         JOIN projects p ON p.id = u.project_id
+         GROUP BY p.slug, u.billing_source, date(u.ts), u.model
+         ORDER BY day DESC, project ASC, model ASC`,
+      )
+      .all() as unknown as CostAggregateRow[];
   }
 }
 
