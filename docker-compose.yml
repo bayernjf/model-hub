@@ -23,7 +23,7 @@ services:
   # SQLite snapshot loop (scripts/backup-hub.sh): consistent .backup copies to
   # a host-mounted ./backups dir, pruned after RETENTION_DAYS.
   backup:
-    image: alpine:3.20
+    image: node:22-slim
     depends_on:
       - model-hub
     volumes:

@@ -14,8 +14,8 @@ mkdir -p "$BACKUP_DIR"
 while true; do
   STAMP=$(date +%Y%m%d-%H%M%S)
   OUT="$BACKUP_DIR/hub-$STAMP.db"
-  # .backup produces a consistent snapshot even while the hub process writes.
-  sqlite3 "$DB_PATH" ".backup '$OUT'"
+  # VACUUM INTO produces a consistent snapshot (node:sqlite; no sqlite3 CLI needed).
+  DB_PATH="$DB_PATH" OUT="$OUT" node --experimental-sqlite -e 'const {DatabaseSync}=require("node:sqlite"); const db=new DatabaseSync(process.env.DB_PATH); db.exec("VACUUM INTO \x27"+process.env.OUT+"\x27"); db.close();'
   # Prune old snapshots (matches semantics of loom infra/backup/backup.sh).
   find "$BACKUP_DIR" -name 'hub-*.db' -type f -mtime "+$RETENTION_DAYS" -delete
   echo "[$(date -Iseconds)] wrote $OUT (kept last $RETENTION_DAYS days)"

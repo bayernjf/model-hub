@@ -10,6 +10,7 @@ node_modules/
 
 # Runtime data (SQLite, cached projections, keys) — never committed
 **/data/
+backups/
 
 # Logs and local env
 *.log
