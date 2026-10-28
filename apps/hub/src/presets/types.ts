@@ -85,6 +85,13 @@ export interface AdapterDialect {
   images_path?: string;
   max_n?: number;
   omit_duration?: boolean;
+  // Voice-dialect auth. `x-api-key` sends the credential in X-Api-Key and
+  // carries a resource id (ByteDance openspeech TTS/ASR); `bearer` is the
+  // standard Authorization header. These are not secrets.
+  auth_style?: 'bearer' | 'x-api-key';
+  resource_id?: string;
+  // ASR single-stream (nostream) mode: the whole utterance is returned at once.
+  nonstream?: boolean;
 }
 
 /** A model offered by a preset provider. */
