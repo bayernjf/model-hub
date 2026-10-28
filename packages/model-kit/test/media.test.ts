@@ -67,8 +67,7 @@ describe('video driver', () => {
   it('submits a video and polls to completion using the adapter dialect', async () => {
     let polls = 0;
     let submitBody: string | null = null;
-    const fake = (async (input, init) => {
-      const url = String(input);
+    const fake = (async (_input, init) => {
       const method = init?.method ?? 'GET';
       if (method === 'POST') {
         submitBody = String(init?.body);
