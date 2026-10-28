@@ -1,0 +1,25 @@
+---
+import ConsoleLayout from '../layouts/ConsoleLayout.astro';
+import Costs from '../islands/Costs.tsx';
+---
+<ConsoleLayout title="成本">
+  <Costs client:load />
+</ConsoleLayout>
+
+<style>
+  h2 { font-size: 14px; margin: 0 0 8px; color: var(--ink-dim); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+  th,
+  td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: var(--hair);
+    font-family: var(--mono);
+  }
+  th { color: var(--ink-dim); font-weight: 500; }
+</style>
