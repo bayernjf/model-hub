@@ -151,6 +151,8 @@ export interface ModelKitOptions {
   envFallback?: EnvFallback;
   // Optional fetch override (tests).
   fetch?: typeof fetch;
+  // Optional WebSocket factory for ASR (tests / browser transport).
+  webSocketFactory?: import('./asr.js').AsrSocketFactory;
   // Cache refresh interval in ms (default 5 minutes).
   refreshIntervalMs?: number;
 }

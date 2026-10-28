@@ -12,6 +12,8 @@ import { embedJson, generateImage, generateVideo } from './media.js';
 import type { EmbedResult, ImageResult, VideoResult } from './media.js';
 import { synthesize } from './audio.js';
 import type { TtsResult } from './audio.js';
+import { nodeWsFactory, transcribe } from './asr.js';
+import type { AsrResult, AsrSocketFactory } from './asr.js';
 import { reportUsageInBackground } from './reporter.js';
 import type {
   CatalogResponse,
@@ -347,6 +349,40 @@ export class ModelKit {
     return result;
   }
 
+  // Recognize speech (ASR over the SAUC binary WebSocket protocol). Returns
+  // the transcript text plus per-utterance details.
+  async asr(
+    alias: string,
+    audio: Uint8Array,
+    opts?: {
+      chunkMs?: number | undefined;
+      timeoutMs?: number | undefined;
+      rawPcm?: boolean | undefined;
+      uid?: string | undefined;
+      signal?: AbortSignal | undefined;
+      request?: Record<string, unknown> | undefined;
+    },
+  ): Promise<AsrResult> {
+    const model = this.resolve(alias);
+    const factory: AsrSocketFactory =
+      this.options.webSocketFactory ?? nodeWsFactory;
+    const result = await transcribe(
+      {
+        model,
+        audio,
+        chunkMs: opts?.chunkMs,
+        timeoutMs: opts?.timeoutMs,
+        rawPcm: opts?.rawPcm,
+        uid: opts?.uid,
+        signal: opts?.signal,
+        request: opts?.request,
+      },
+      factory,
+    );
+    this.reportUsage(alias, model, null, 200);
+    return result;
+  }
+
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
@@ -391,6 +427,23 @@ export type { EmbedResult, ImageResult, VideoResult } from './media.js';
 
 export { synthesize } from './audio.js';
 export type { TtsResult } from './audio.js';
+
+export {
+  buildAudioOnly,
+  buildFullRequest,
+  nodeWsFactory,
+  parseFrame,
+  parseWav,
+  transcribe,
+} from './asr.js';
+export type {
+  AsrResult,
+  AsrSocket,
+  AsrSocketFactory,
+  ParsedAsrFrame,
+  TranscribeCall,
+  WavData,
+} from './asr.js';
 
 export { postUsage, reportUsageInBackground } from './reporter.js';
 export type { UsageInput } from './reporter.js';
