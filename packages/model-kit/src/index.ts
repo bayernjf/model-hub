@@ -8,6 +8,8 @@ import {
 import { pingHub, runTest } from './health.js';
 import { completeJson, streamChat } from './driver.js';
 import type { ChatMessage, ChatResult, StreamChunk } from './driver.js';
+import { embedJson, generateImage, generateVideo } from './media.js';
+import type { EmbedResult, ImageResult, VideoResult } from './media.js';
 import { reportUsageInBackground } from './reporter.js';
 import type {
   CatalogResponse,
@@ -273,6 +275,60 @@ export class ModelKit {
     this.reportUsage(alias, model, usage, 200);
   }
 
+  // Embed text into vectors (synchronous).
+  async embed(
+    alias: string,
+    input: string | string[],
+    opts?: { signal?: AbortSignal | undefined },
+  ): Promise<EmbedResult> {
+    const model = this.resolve(alias);
+    const result = await embedJson(
+      { model, input, signal: opts?.signal },
+      this.fetchImpl,
+    );
+    this.reportUsage(alias, model, null, result.httpStatus);
+    return result;
+  }
+
+  // Generate an image (synchronous); returns the image URL.
+  async image(
+    alias: string,
+    prompt: string,
+    opts?: { size?: string | undefined; signal?: AbortSignal | undefined },
+  ): Promise<ImageResult> {
+    const model = this.resolve(alias);
+    const result = await generateImage(
+      { model, prompt, size: opts?.size, signal: opts?.signal },
+      this.fetchImpl,
+    );
+    this.reportUsage(alias, model, null, result.httpStatus);
+    return result;
+  }
+
+  // Generate a video (async submit + poll per the adapter dialect); returns the
+  // final video URL once the task completes.
+  async video(
+    alias: string,
+    prompt: string,
+    opts?: {
+      signal?: AbortSignal | undefined;
+      pollTimeoutMs?: number | undefined;
+    },
+  ): Promise<VideoResult> {
+    const model = this.resolve(alias);
+    const result = await generateVideo(
+      {
+        model,
+        prompt,
+        signal: opts?.signal,
+        pollTimeoutMs: opts?.pollTimeoutMs,
+      },
+      this.fetchImpl,
+    );
+    this.reportUsage(alias, model, null, result.httpStatus);
+    return result;
+  }
+
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
@@ -311,6 +367,9 @@ export type {
   StreamChunk,
   TokenUsage,
 } from './driver.js';
+
+export { embedJson, generateImage, generateVideo } from './media.js';
+export type { EmbedResult, ImageResult, VideoResult } from './media.js';
 
 export { postUsage, reportUsageInBackground } from './reporter.js';
 export type { UsageInput } from './reporter.js';
