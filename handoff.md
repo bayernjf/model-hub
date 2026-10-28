@@ -7,7 +7,9 @@
 - **W2-3 L1 / W2-4 L2 测试真实验证**：本地 hub（8791）建 Agnes-本机 provider，
   L1 连接测试 `ok`、L2 文本/图片 `ok`，审计三条 success。**2026-10-28 Ark Plan
   subscription 路径真实复跑成功**：Plan key 已由 owner 提供并经管理台录入，
-  `ark-code-latest` L1 `ok`、`model_echo:"auto"`（订阅套餐特征）。
+  `ark-code-latest` L1 `ok`、`model_echo:"auto"`（订阅套餐特征）。图片模型
+  `doubao-seedream-5.0-flash` L2 deep 真实生成 `ok`（~11s；顺带修复生成超时
+  15s→60s，见下方 fix(test) 提交）。
 - **W4-1a 分发定案落码**：model-kit 随 monorepo 发版，消费方 Git 标签依赖
   （npm 不支持 monorepo 子目录、pnpm 需 `#vX.Y.Z&path:`、pip 需 `#subdirectory=`）。
   tag `v0.1.0` 已 push（bf5b2ab），从真实 remote 装通。
@@ -43,9 +45,9 @@
 
 ## 开放点
 
-1. 图片/视频/语音模型待测：开发阶段文本模型用 Ark Plan `ark-code-latest`
-   （L1 已实测 `ok`）。图片/视频/语音模型待 owner 提供 key 后再测（L2 图片深度
-   生成、视频提交、音频路径）。
+1. 视频/语音模型待测：文本用 Ark Plan `ark-code-latest`（L1 `ok`）、图片用
+   `doubao-seedream-5.0-flash`（L2 deep `ok`）。视频/语音模型待 owner 提供 key
+   后再测（L2 视频提交、音频合成/识别路径）。
 2. W7-5 生产宿主机部署待定：本机 MacBook Docker 已实测全绿（镜像构建 + healthz +
    备份 + 模型拉取），制品可用。生产长驻部署改为**云服务器方案（最终选择，后续执行）**，
    原 zeus/loom 同机宿主机（hasee-2016-server）暂不可用。迁移要点见 DEPLOYMENT.md
