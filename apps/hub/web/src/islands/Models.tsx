@@ -135,6 +135,7 @@ export default function Models() {
         <div className="filters">
           {MODALITY_FILTERS.map((f) => (
             <button
+              key={f.value}
               className={`btn ${filter === f.value ? 'btn--primary' : ''}`}
               onClick={() => setFilter(f.value)}
             >
@@ -174,7 +175,7 @@ export default function Models() {
           </thead>
           <tbody>
             {filtered.map((m) => (
-              <tr>
+              <tr key={m.id}>
                 <td>{m.display_name ?? m.model}</td>
                 <td>{providerName(m.provider_id)}</td>
                 <td className="mono dim">{m.modalities.join(',')}</td>
@@ -301,6 +302,7 @@ function ImportDrawer({
           <div className="drawer-groups">
             {presets.map((p) => (
               <button
+                key={p.id}
                 className={`group-item ${p.id === activePreset ? 'active' : ''}`}
                 onClick={() => setActivePreset(p.id)}
               >
@@ -310,7 +312,7 @@ function ImportDrawer({
           </div>
           <div className="drawer-models">
             {preset?.models.map((m) => (
-              <label className="model-check">
+              <label key={m.id} className="model-check">
                 <input
                   type="checkbox"
                   checked={selected[activePreset]?.has(m.id) ?? false}

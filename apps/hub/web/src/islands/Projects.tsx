@@ -192,7 +192,7 @@ export default function Projects() {
                           <span className="dim">暂无 Token</span>
                         )}
                         {p.tokens.map((t) => (
-                          <div className="token-item">
+                          <div className="token-item" key={t.id}>
                             <span className="mono">{t.token_hint}</span>
                             <span className="dim">
                               {t.last_used_at ?? '从未使用'}
