@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # ---- builder: install full deps and compile all workspaces ----
 FROM node:22-slim AS builder
 WORKDIR /app
@@ -10,7 +8,7 @@ COPY package.json package-lock.json ./
 COPY apps/hub/package.json apps/hub/package.json
 COPY apps/hub/web/package.json apps/hub/web/package.json
 COPY packages/model-kit/package.json packages/model-kit/package.json
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # TypeScript configs and sources.
 COPY tsconfig.base.json ./
@@ -35,11 +33,12 @@ COPY package.json package-lock.json ./
 COPY apps/hub/package.json apps/hub/package.json
 COPY apps/hub/web/package.json apps/hub/web/package.json
 COPY packages/model-kit/package.json packages/model-kit/package.json
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY --from=builder --chown=node:node /app/apps/hub/dist apps/hub/dist
 COPY --from=builder --chown=node:node /app/apps/hub/web/dist apps/hub/web/dist
 COPY --from=builder --chown=node:node /app/packages/model-kit/dist packages/model-kit/dist
+COPY --chown=node:node db db
 
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node
