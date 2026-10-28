@@ -16,7 +16,8 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepare": "npm run build"
   },
   "dependencies": {}
 }
