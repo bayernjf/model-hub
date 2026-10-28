@@ -8,6 +8,7 @@ WORKDIR /app
 # independently from source changes.
 COPY package.json package-lock.json ./
 COPY apps/hub/package.json apps/hub/package.json
+COPY apps/hub/web/package.json apps/hub/web/package.json
 COPY packages/model-kit/package.json packages/model-kit/package.json
 RUN npm ci
 
@@ -17,6 +18,10 @@ COPY apps/hub/tsconfig.json apps/hub/tsconfig.build.json apps/hub/
 COPY packages/model-kit/tsconfig.json packages/model-kit/tsconfig.build.json packages/model-kit/
 COPY apps/hub/src apps/hub/src
 COPY packages/model-kit/src packages/model-kit/src
+# Astro admin console: config and source (no public/ assets today).
+COPY apps/hub/web/astro.config.mjs apps/hub/web/astro.config.mjs
+COPY apps/hub/web/tsconfig.json apps/hub/web/tsconfig.json
+COPY apps/hub/web/src apps/hub/web/src
 RUN npm run build
 
 # ---- runner: production dependencies only, non-root ----
@@ -28,10 +33,12 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY apps/hub/package.json apps/hub/package.json
+COPY apps/hub/web/package.json apps/hub/web/package.json
 COPY packages/model-kit/package.json packages/model-kit/package.json
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder --chown=node:node /app/apps/hub/dist apps/hub/dist
+COPY --from=builder --chown=node:node /app/apps/hub/web/dist apps/hub/web/dist
 COPY --from=builder --chown=node:node /app/packages/model-kit/dist packages/model-kit/dist
 
 RUN mkdir -p /data && chown -R node:node /data /app
