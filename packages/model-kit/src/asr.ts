@@ -34,6 +34,7 @@ const FLAGS = {
   NEG_WITH_SEQUENCE: 0x3,
 } as const;
 
+const SERIALIZATION_RAW = 0x0;
 const SERIALIZATION_JSON = 0x1;
 const COMPRESSION_GZIP = 0x1;
 
@@ -41,11 +42,15 @@ const COMPRESSION_GZIP = 0x1;
 // Frame builders (client → server)
 // ---------------------------------------------------------------------------
 
-function buildHeader(messageType: number, flags: number): Buffer {
+function buildHeader(
+  messageType: number,
+  flags: number,
+  serialization: number = SERIALIZATION_JSON,
+): Buffer {
   const header = Buffer.alloc(4);
   header[0] = (PROTOCOL_VERSION << 4) | HEADER_SIZE_UNITS;
   header[1] = (messageType << 4) | flags;
-  header[2] = (SERIALIZATION_JSON << 4) | COMPRESSION_GZIP;
+  header[2] = (serialization << 4) | COMPRESSION_GZIP;
   header[3] = 0x00;
   return header;
 }
@@ -87,6 +92,8 @@ export function buildFullRequest(
 
 // Frames 2..N: audio-only chunks. The final chunk uses negative sequence with
 // the NEG_WITH_SEQUENCE flag so the server knows the upload is complete.
+// Audio frames carry raw PCM, so the serialization nibble must be RAW: marking
+// them JSON makes the server report 45000151 (unsupported audio format).
 export function buildAudioOnly(
   seq: number,
   pcm: Uint8Array,
@@ -99,7 +106,7 @@ export function buildAudioOnly(
   meta.writeInt32BE(seqValue, 0);
   meta.writeUInt32BE(compressed.length, 4);
   return Buffer.concat([
-    buildHeader(MESSAGE_TYPE.CLIENT_AUDIO_ONLY_REQUEST, flags),
+    buildHeader(MESSAGE_TYPE.CLIENT_AUDIO_ONLY_REQUEST, flags, SERIALIZATION_RAW),
     meta,
     compressed,
   ]);
@@ -351,16 +358,21 @@ function collect(frames: ParsedAsrFrame[]): AsrResult {
       }
     }
   }
-  // Streaming frames carry cumulative text; the last frame with text wins.
-  // Nostream returns a single frame with the complete text.
+  // Streaming frames carry cumulative text, and the async endpoint also emits
+  // frames whose result has no text at all (log_id only) or an empty interim
+  // string. Prefer the last NON-EMPTY text and fall back to the last string.
   let text = '';
+  let fallback = '';
   for (let i = frames.length - 1; i >= 0; i--) {
     const t = (frames[i]!.payload as AsrResultPayload | null)?.result?.text;
-    if (typeof t === 'string') {
+    if (typeof t !== 'string') continue;
+    if (fallback === '') fallback = t;
+    if (t !== '') {
       text = t;
       break;
     }
   }
+  if (text === '') text = fallback;
   if (!text && utterances.length > 0) {
     text = utterances.map((u) => u.text).join('');
   }
@@ -387,19 +399,21 @@ export async function transcribe(
   const path =
     adapter?.submit_path ?? '/api/v3/plan/sauc/bigmodel_async';
   const url = toWsUrl(call.model.baseUrl, path);
-  const nonstream =
-    /nostream/.test(path) || adapter?.['nonstream'] === true;
 
   let audioCfg: AsrAudioConfig;
   let pcm: Buffer;
   if (call.rawPcm) {
     pcm = Buffer.from(call.audio);
-    audioCfg = { format: 'raw', codec: 'raw', rate: 16000, bits: 16, channel: 1 };
+    audioCfg = { format: 'pcm', codec: 'raw', rate: 16000, bits: 16, channel: 1 };
   } else {
     const wav = parseWav(call.audio);
     pcm = wav.pcm;
+    // The payload is the WAV header's PCM data, never the container, so the
+    // declared format is pcm even though the caller handed us a WAV file.
+    // Declaring 'wav' here makes the server try to parse headerless PCM as a
+    // container and answer 45000151 (unsupported audio format).
     audioCfg = {
-      format: 'wav',
+      format: 'pcm',
       codec: 'raw',
       rate: wav.rate,
       bits: wav.bits,
@@ -424,7 +438,10 @@ export async function transcribe(
     enable_punc: true,
     enable_ddc: true,
     show_utterances: true,
-    enable_nonstream: nonstream,
+    // Ask for the final non-stream result in BOTH modes. Without it the async
+    // endpoint answers with only log_id + audio_info.duration: the transcript
+    // never appears in any frame the client receives.
+    enable_nonstream: true,
     // Adapter body and per-call overrides win over the defaults.
     ...((adapter?.create_body as Record<string, unknown> | undefined) ?? {}),
     ...(call.request ?? {}),
