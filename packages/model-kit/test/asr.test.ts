@@ -367,3 +367,91 @@ describe('nodeWsFactory', () => {
     await new Promise<void>((resolve) => wss.close(() => resolve()));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Wire contract pinned by a real run against openspeech.bytedance.com
+// (2026-10-29). The fake-socket tests above all passed while the live
+// endpoint rejected the same traffic, so these lock down the three fields that
+// only a real server exposed.
+// ---------------------------------------------------------------------------
+
+describe('asr wire contract (live-pinned)', () => {
+  async function runCaptured(
+    adapter: Record<string, unknown>,
+    audio: Buffer,
+  ): Promise<{ sent: Buffer[]; text: string }> {
+    const sent: Buffer[] = [];
+    const factory = fakeFactory((frame, respond) => {
+      sent.push(frame);
+      // The last audio frame carries NEG_WITH_SEQUENCE (0x3).
+      if ((frame[1]! & 0x0f) === 0x3) {
+        respond(
+          new Uint8Array(serverResponse({ result: { text: '你好' } }, { flags: 0x3 })),
+        );
+      }
+    });
+    const result = await transcribe(
+      {
+        model: model({ adapter: adapter as ResolvedModel['adapter'] }),
+        audio: new Uint8Array(audio),
+      },
+      factory,
+    );
+    return { sent, text: result.text };
+  }
+
+  const adapter = {
+    submit_path: '/api/v3/plan/sauc/bigmodel_async',
+    resource_id: 'volc.seedasr.sauc.duration',
+  };
+
+  it('tags audio-only frames as raw while the full request stays JSON', async () => {
+    const { sent } = await runCaptured(adapter, makeWav(1));
+    // Byte 2 = serialization (high nibble) + compression (low nibble).
+    expect(sent[0]![2]).toBe(0x11); // request: JSON + gzip
+    expect(sent.slice(1).every((f) => f[2] === 0x01)).toBe(true); // audio: raw + gzip
+  });
+
+  it('declares pcm, because only the WAV body is uploaded', async () => {
+    const { sent, text } = await runCaptured(adapter, makeWav(1));
+    const req = decodeFullRequest(sent[0]!);
+    expect(text).toBe('你好');
+    // Declaring the container format made the server answer 45000151.
+    expect(req.audio).toMatchObject({
+      format: 'pcm',
+      rate: 16000,
+      bits: 16,
+      channel: 1,
+    });
+  });
+
+  it('always asks for the final non-stream result', async () => {
+    for (const submitPath of [
+      '/api/v3/plan/sauc/bigmodel_async',
+      '/api/v3/plan/sauc/bigmodel_nostream',
+    ]) {
+      const { sent } = await runCaptured({ ...adapter, submit_path: submitPath }, makeWav(1));
+      expect(decodeFullRequest(sent[0]!).request.enable_nonstream).toBe(true);
+    }
+  });
+
+  it('prefers the last non-empty text when the final frame is empty', async () => {
+    const frames = [
+      { result: { text: '你好' } },
+      { result: { additions: { log_id: 'x' } } },
+      { result: { text: '' } },
+    ];
+    const factory = fakeFactory((frame, respond) => {
+      const isLast = (frame[1]! & 0x0f) === 0x3;
+      if (!isLast) return;
+      respond(new Uint8Array(serverResponse(frames[0]!, { flags: 0x1 })));
+      respond(new Uint8Array(serverResponse(frames[1]!, { flags: 0x1 })));
+      respond(new Uint8Array(serverResponse(frames[2]!, { flags: 0x3 })));
+    });
+    const result = await transcribe(
+      { model: model({ adapter: adapter as ResolvedModel['adapter'] }), audio: new Uint8Array(makeWav(1)) },
+      factory,
+    );
+    expect(result.text).toBe('你好');
+  });
+});
