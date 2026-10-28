@@ -45,9 +45,16 @@
 
 ## 开放点
 
-1. 视频/语音模型待测：文本用 Ark Plan `ark-code-latest`（L1 `ok`）、图片用
-   `doubao-seedream-5.0-flash`（L2 deep `ok`）。视频/语音模型待 owner 提供 key
-   后再测（L2 视频提交、音频合成/识别路径）。
+1. 视频/语音模型接入（部分受阻，多为非代码问题）：
+   - 视频：Agnes `agnes-video-2.5-flash` 已登记（payg，`apihub.agnes-ai.com/v1`）。
+     手动 curl 连通性通过（认证/模型/URL 正确），但 Agnes 视频队列当前满
+     （`video_queue_full`，平台临时限制）。另发现 `probeVideoSubmit` 请求体硬编码
+     `duration`，与 Agnes 的 `seconds/mode/size` 方言不兼容——L2 视频提交 body 需
+     per-provider 适配（待办）。
+   - 语音 TTS（`seed-tts-2.0`）：认证走火山语音双头 `X-Api-App-Key`/`X-Api-Access-Key`，
+     与 Ark Plan key（Bearer）不通用，待 owner 提供语音 appid+token。
+   - 语音 ASR（`volc.seedasr.sauc.duration`）：仅 WebSocket 端点，model-hub 的 HTTP
+     连接测试无法覆盖，需 WebSocket 探测能力（待办）。
 2. W7-5 生产宿主机部署待定：本机 MacBook Docker 已实测全绿（镜像构建 + healthz +
    备份 + 模型拉取），制品可用。生产长驻部署改为**云服务器方案（最终选择，后续执行）**，
    原 zeus/loom 同机宿主机（hasee-2016-server）暂不可用。迁移要点见 DEPLOYMENT.md
