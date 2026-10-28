@@ -7,7 +7,8 @@ OpenAPI 3.1 与 JSON Schema 2020-12 兼容，双端共享同一份 fixture。
 
 ```text
 contracts/
-├── openapi.yaml                    # OpenAPI 3.1：/pub/v1 三个端点
+├── openapi.yaml                    # OpenAPI 3.1：/pub/v1 项目侧端点
+├── admin-openapi.yaml              # OpenAPI 3.1：cookie-session 管理端 API
 ├── schemas/
 │   ├── common.json                 # 枚举、pricing、endpoints、adapter、error
 │   ├── models-response.json        # GET /pub/v1/models 响应

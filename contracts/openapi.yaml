@@ -7,7 +7,8 @@ info:
     Projects authenticate with a project token (Bearer). The hub is a control
     plane only: it returns the projected catalog for the authenticated project;
     projects then call model providers directly. This document covers the
-    project-facing /pub/v1 endpoints. Admin endpoints are documented separately.
+    project-facing /pub/v1 endpoints. The cookie-session admin API is documented
+    in admin-openapi.yaml.
 servers:
   - url: https://model-hub.internal
     description: Co-hosted intranet hub (Caddy HTTPS, Tailscale-only).
