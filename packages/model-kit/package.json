@@ -13,15 +13,20 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepare": "node -e \"const fs=require('fs'); if(fs.existsSync('tsconfig.build.json')){require('child_process').execSync('tsc -p tsconfig.build.json',{stdio:'inherit'})}\""
   },
-  "dependencies": {},
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "@types/node": "^22.10.5"
+    "@types/node": "^22.10.5",
+    "@types/ws": "^8.18.2",
+    "typescript": "^5.7.2"
   }
 }
