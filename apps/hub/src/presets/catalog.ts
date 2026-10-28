@@ -435,14 +435,16 @@ export const PRESET_CATALOG: PresetCatalog = {
           supports_json: false,
           supports_stream: false,
           // Real per-second price not yet confirmed; owner must fill before
-          // billing. WebSocket-only; not yet exercised against a real key.
+          // billing. Path + auth verified live 2026-10-29 (plan key on
+          // openspeech.bytedance.com, WAV 16k mono in, transcript + utterances
+          // out). See handoff.md for the three wire fixes it exposed.
           pricing: {},
           adapter: {
             auth_style: 'x-api-key',
             resource_id: 'volc.seedasr.sauc.duration',
             submit_path: '/api/v3/plan/sauc/bigmodel_async',
           },
-          note: '双流实时转写；WAV PCM 16kHz/16bit/单声道。',
+          note: '双流实时转写；WAV PCM 16kHz/16bit/单声道（客户端上传裸 PCM，声明 format=pcm）。',
         },
         {
           id: 'seed-asr-2-nostream',
@@ -451,6 +453,9 @@ export const PRESET_CATALOG: PresetCatalog = {
           modalities: ['audio'],
           supports_json: false,
           supports_stream: false,
+          // Real per-second price not yet confirmed; owner must fill before
+          // billing. Path + auth verified live 2026-10-29 (same run as the
+          // dual-stream model).
           pricing: {},
           adapter: {
             auth_style: 'x-api-key',

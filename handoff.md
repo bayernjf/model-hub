@@ -46,6 +46,36 @@
 状态：`check:all` 全绿（**23 文件 / 173 用例** + Python 7 用例），工作区干净，
 **12 个提交待 owner 授权后 push**（AGENTS.md：「未明确授权前不 push」）。
 
+### ASR 真实联调（2026-10-29，已跑通）
+
+用种子语音（`say` 合成 → 16k/16bit/单声道 WAV，4.78s）对 `openspeech.bytedance.com`
+真实调用，**双流与单流均返回正确文本**：
+`"今天的增装实验已经完成，请检查新的页面修复。"`（预期句为"增长"，同音误识属正常；
+双流某次跑出的是正确的"增长"）。耗时 ~0.8–1.1s。成本：每轮 2 次真实调用（按秒计费，
+价格未确认，见下）。
+
+这一轮证明**假 socket 永远测不出的三处缺陷**，全部已修（`fix(asr)` 提交）：
+
+1. **音频帧序列化标记错误**：`buildHeader` 给所有帧打 `SERIALIZATION_JSON`，纯音频帧
+   应为 raw。服务端因此读不出音频。
+2. **WAV 输入声明成 `format: 'wav'`**：客户端上传的是剥掉容器头的裸 PCM，服务端按
+   WAV 容器解析，返回 **45000151（音频格式不正确）**。改为声明 `pcm`。
+3. **双流没要最终结果**：`enable_nonstream` 只在单流模式为 true。双流据此只回
+   `log_id + audio_info.duration`，**没有任何文本**。改为两种模式都请求最终非流式
+   结果；`collect()` 同时改为优先取最后一个**非空**文本（双流会发空文本帧）。
+
+**凭据/端点事实（与上一轮记录不同）**：
+
+- 语音路由不在 `ark.cn-beijing.volces.com`（该 host 上 `/api/v3/plan/sauc/*` 与伪造
+  路径一样返回 404；`x-api-key` 在该 host 上一律 401，只认 Bearer）。
+- 语音在 `openspeech.bytedance.com`，且**同一把 Ark Plan key 在该 host 上可用**
+  （x-api-key；TTS 路由返回语义错误 45000000 而非 401，sauc 路由返回 405 说明存在）。
+- 但 volume 里**没有 OpenSpeech provider**，只有 Ark Plan 与 Agnes。若要在 hub 里
+  正式接入语音，需新建一个 provider：`base_url=https://openspeech.bytedance.com`、
+  复用同一把 key —— 我没有替你写库（会改动生产数据），等确认。
+- 两条 ASR preset 的 `submit_path`/`resource_id` 本身是对的，未改；只更新了注释里
+  "尚未用真实 key 验证"的说法。
+
 ## 已完成（任务10–17）
 
 - **W2-3 L1 / W2-4 L2 测试真实验证**：本地 hub（8791）建 Agnes-本机 provider，
@@ -83,8 +113,8 @@
 
 ## 本地验证基线
 
-- model-hub `npm run check:all`：**23 files / 173 tests + Python 7 tests 全绿，exit 0**
-  （2026-10-29 第二会话实测；此前记录的 20 files / 153 tests 是 W7 之前的口径）。
+- model-hub `npm run check:all`：**23 files / 177 tests + Python 7 tests 全绿，exit 0**
+  （2026-10-29 ASR 真实联调后实测；此前记录的 20 files / 153 tests 是 W7 之前的口径）。
 - zeus：typecheck + build 通过；20 个失败测试为 undici `invalid onError method`
   环境问题（Node 26），stash 基线同现，与本次改动无关。
 - loom：venv pytest，hub/content/registry 208 passed。
@@ -144,8 +174,10 @@
    （TTS 按千字符、ASR 按秒、视频按秒/分辨率档位）。当前语音 preset 价格留空。
 2. 【受阻】云服务器迁移：最终方案，需 owner 确认服务器资源与时间；要点见
    DEPLOYMENT.md §「云服务器迁移」（原 hasee-2016-server 不可用）。
-3. ASR 真实联调：当前仅 mock + 本地 ws server 测试，需用真实 key 跑通双流/单流。
-   真实 key 已保存在 named volume `model-hub_model-hub-data`，起容器即可测。
+3. ~~ASR 真实联调~~ **已完成（2026-10-29）**：双流/单流均对真实端点返回正确文本，
+   并修出三处只有真实服务端才暴露的 wire 缺陷（见上「ASR 真实联调」）。遗留：volume
+   里没有 OpenSpeech provider，若要在 hub 内接入需新建一个（base
+   `https://openspeech.bytedance.com`，复用同一把 key）。
 4. TTS 真实联调：HTTP 已真实合成过 MP3，可再补一次端到端回归并固化音色。
 5. 视频 Agnes 真实生成复测：队列曾满（video_queue_full），待平台恢复后 deep 复测；
    probeVideoSubmit 已按方言适配（create_body/seconds_field/omit_duration）。
