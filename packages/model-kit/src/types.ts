@@ -46,6 +46,10 @@ export interface AdapterConfig {
   max_n?: number | undefined;
   first_frame_path?: string | undefined;
   images_path?: string | undefined;
+  // Voice-dialect extras: X-Api-Key single-header auth (vs bearer) and the
+  // resource id that selects the model version (e.g. seed-tts-2.0).
+  auth_style?: 'bearer' | 'x-api-key' | undefined;
+  resource_id?: string | undefined;
   [key: string]: unknown;
 }
 

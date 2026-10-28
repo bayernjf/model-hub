@@ -10,6 +10,8 @@ import { completeJson, streamChat } from './driver.js';
 import type { ChatMessage, ChatResult, StreamChunk } from './driver.js';
 import { embedJson, generateImage, generateVideo } from './media.js';
 import type { EmbedResult, ImageResult, VideoResult } from './media.js';
+import { synthesize } from './audio.js';
+import type { TtsResult } from './audio.js';
 import { reportUsageInBackground } from './reporter.js';
 import type {
   CatalogResponse,
@@ -329,6 +331,22 @@ export class ModelKit {
     return result;
   }
 
+  // Synthesize speech (HTTP TTS). Returns decoded audio bytes (Doubao voice)
+  // or a URL (OpenAI-compatible TTS).
+  async tts(
+    alias: string,
+    text: string,
+    opts?: { signal?: AbortSignal | undefined },
+  ): Promise<TtsResult> {
+    const model = this.resolve(alias);
+    const result = await synthesize(
+      { model, text, signal: opts?.signal },
+      this.fetchImpl,
+    );
+    this.reportUsage(alias, model, null, result.httpStatus);
+    return result;
+  }
+
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
@@ -370,6 +388,9 @@ export type {
 
 export { embedJson, generateImage, generateVideo } from './media.js';
 export type { EmbedResult, ImageResult, VideoResult } from './media.js';
+
+export { synthesize } from './audio.js';
+export type { TtsResult } from './audio.js';
 
 export { postUsage, reportUsageInBackground } from './reporter.js';
 export type { UsageInput } from './reporter.js';
