@@ -52,8 +52,15 @@
      （`video_queue_full`，平台临时限制）。另发现 `probeVideoSubmit` 请求体硬编码
      `duration`，与 Agnes 的 `seconds/mode/size` 方言不兼容——L2 视频提交 body 需
      per-provider 适配（待办）。
-   - 语音 TTS（`seed-tts-2.0`）：认证走火山语音双头 `X-Api-App-Key`/`X-Api-Access-Key`，
-     与 Ark Plan key（Bearer）不通用，待 owner 提供语音 appid+token。
+   - 语音 TTS（`seed-tts-2.0`）：**2026-10-29 真实打通（owner 判断正确，此前
+     "需 appid+token"的结论有误）**。认证用新版 `X-Api-Key` 单头——Ark Plan key
+     直接可用；旧版 `X-Api-App-Id`/`X-Api-Access-Key` 双头不适用。音色字段为
+     `req_params.speaker`，且**必须用 uranus_bigtts 系列**（mars/moon 系列属
+     seed-tts-1.0，混用报 resource mismatch）。响应为 HTTP chunked JSON
+     （`{code,data:base64}` 多块），拼接解码即 MP3。实测合成 24KB MP3
+     （MPEG L3 64kbps/24kHz）。
+     model-hub 适配注意：豆包语音是 X-Api-Key 单头 + 非标 body（text/speaker），
+     现有 probe 系列为 Bearer + OpenAI 兼容，接入需方言适配（待办）。
    - 语音 ASR（`volc.seedasr.sauc.duration`）：仅 WebSocket 端点，model-hub 的 HTTP
      连接测试无法覆盖，需 WebSocket 探测能力（待办）。
 2. W7-5 生产宿主机部署待定：本机 MacBook Docker 已实测全绿（镜像构建 + healthz +
