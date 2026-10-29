@@ -87,7 +87,7 @@ function NewProviderForm({
         <span>预置厂商</span>
         <select value={presetId} onChange={(e) => setPresetId(e.target.value)}>
           {presets.map((p) => (
-            <option value={p.id}>{p.name}</option>
+            <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
       </label>
@@ -193,7 +193,7 @@ export default function Providers() {
           </thead>
           <tbody>
             {providers.map((p) => (
-              <tr>
+              <tr key={p.id}>
                 <td>{p.name}</td>
                 <td className="mono">{p.protocol}</td>
                 <td className="mono dim">{p.base_url}</td>

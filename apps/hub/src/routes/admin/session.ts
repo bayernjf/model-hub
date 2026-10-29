@@ -10,6 +10,7 @@ import {
 } from '../../auth/session.js';
 import { writeAudit } from '../../audit.js';
 import type { HubConfig } from '../../config.js';
+import { PersistentLoginLimiter } from '../../login-limiter.js';
 
 interface LoginBody {
   username?: string;
@@ -21,6 +22,11 @@ export function sessionRoutes(
   db: DatabaseSync,
 ): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
+  // Login brute-force guard: at most 10 failed attempts per 15 minutes per IP.
+  // Only failures consume the budget, so a successful login is never throttled.
+  // Persisted in login_attempts so the budget survives restarts and is shared
+  // across instances opening the same DB file.
+  const loginLimiter = new PersistentLoginLimiter(db, 10, 15 * 60_000);
 
   // Login is public; it is registered before the auth middleware.
   routes.post('/session', async (c) => {
@@ -29,8 +35,29 @@ export function sessionRoutes(
     const password = body?.password ?? '';
     const ip = clientIp(c);
 
+    if (loginLimiter.remaining(ip) <= 0) {
+      writeAudit(db, {
+        actor: username || 'unknown',
+        action: 'admin.login',
+        targetType: 'session',
+        result: 'denied',
+        detail: 'rate_limited',
+        ip,
+      });
+      return c.json(
+        {
+          error: {
+            code: 'rate_limited',
+            hint: '登录尝试过于频繁，请 15 分钟后再试',
+          },
+        },
+        429,
+      );
+    }
+
     const identity = authenticate(config, username, password);
     if (!identity) {
+      loginLimiter.allow(ip); // consume one failed attempt
       writeAudit(db, {
         actor: username || 'unknown',
         action: 'admin.login',
@@ -42,6 +69,7 @@ export function sessionRoutes(
     }
 
     const token = createSessionToken(identity, config.masterKey);
+    loginLimiter.clear(ip); // a correct login lifts any earlier lockout
     writeAudit(db, {
       actor: identity.username,
       action: 'admin.login',

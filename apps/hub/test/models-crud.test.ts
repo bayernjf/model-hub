@@ -55,7 +55,7 @@ describe('model management', () => {
       presets: unknown[];
     };
     expect(data.catalog_version).toBeTruthy();
-    expect(data.presets.length).toBe(5);
+    expect(data.presets.length).toBe(6);
   });
 
   it('imports preset models disabled by default', async () => {

@@ -1,6 +1,6 @@
 {
   "name": "@model-hub/model-kit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Project-side client for model-hub: pull and cache the projected catalog, resolve models by alias/modality/role, run L3/L4 connection tests, and report usage.",
   "type": "module",
@@ -13,10 +13,20 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepare": "node -e \"const fs=require('fs'); if(fs.existsSync('tsconfig.build.json')){require('child_process').execSync('tsc -p tsconfig.build.json',{stdio:'inherit'})}\""
   },
-  "dependencies": {}
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/ws": "^8.18.2",
+    "typescript": "^5.7.2"
+  }
 }

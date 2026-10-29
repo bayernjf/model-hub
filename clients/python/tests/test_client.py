@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import tempfile
@@ -43,8 +44,11 @@ def make_opener(catalog=None, status=200, exc=None, etag_304=False, capture=None
             return FakeResponse({}, status)
         sent = {k.lower() for k, _ in req.header_items()}
         if etag_304 and "if-none-match" in sent:
+            # A real HTTPError always carries a file-like fp. Passing None
+            # makes exc.close() raise KeyError on Python 3.9, and the client
+            # legitimately closes the error on the 304 path.
             raise error.HTTPError(
-                req.full_url, 304, "Not Modified", {}, None
+                req.full_url, 304, "Not Modified", {}, io.BytesIO(b"")
             )
         return FakeResponse(catalog if catalog is not None else {})
 

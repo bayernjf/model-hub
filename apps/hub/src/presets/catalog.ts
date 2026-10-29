@@ -219,7 +219,7 @@ export const PRESET_CATALOG: PresetCatalog = {
             seconds_range: [4, 12],
             aspect_as_ratio: true,
             max_n: 1,
-            create_body: { size: '720P' },
+            create_body: { size: '720P', mode: 'text' },
           },
         },
       ],
@@ -392,6 +392,77 @@ export const PRESET_CATALOG: PresetCatalog = {
           supports_stream: false,
           pricing: { per_kilo_char: 0.015 },
           endpoints: { audio: '/audio/speech' },
+        },
+      ],
+    },
+
+    // ── ByteDance OpenSpeech (voice: TTS / ASR) ───────────────────────────
+    {
+      id: 'openspeech',
+      name: '火山 OpenSpeech（语音 TTS/ASR）',
+      protocol: 'openai-compatible',
+      billing_type: 'payg',
+      default_base_url: 'https://openspeech.bytedance.com',
+      key_label: 'OpenSpeech API Key（X-Api-Key 单头）',
+      models: [
+        {
+          id: 'seed-tts-2',
+          model: 'seed-tts-2.0',
+          display_name: '豆包语音合成 Seed TTS 2.0',
+          modalities: ['audio'],
+          supports_json: false,
+          supports_stream: false,
+          // 火山引擎官方公开价：豆包语音合成 5 元/万字符（= 0.5 元/千字符）。
+          // 来源：volcengine.com/product/doubao（2026-10-29 抓取）；汇率沿用
+          // 文件头声明的 1 USD = 6.666 CNY → $0.075/kilo_char。
+          pricing: { per_kilo_char: 0.075 },
+          endpoints: { audio: '/api/v3/plan/tts/unidirectional' },
+          adapter: {
+            auth_style: 'x-api-key',
+            resource_id: 'seed-tts-2.0',
+            submit_path: '/api/v3/plan/tts/unidirectional',
+            create_body: {
+              speaker: 'zh_female_vv_uranus_bigtts',
+              audio_params: { format: 'mp3', sample_rate: 24000 },
+            },
+          },
+          note: '音色必须 uranus_bigtts 系列；chunked JSON 拼接 base64 为 MP3。',
+        },
+        {
+          id: 'seed-asr-2-async',
+          model: 'bigmodel',
+          display_name: '豆包语音识别 Seed ASR（双流）',
+          modalities: ['audio'],
+          supports_json: false,
+          supports_stream: false,
+          // 火山引擎官方公开价：豆包流式语音识别 4.5 元/小时（按语音时长计费）。
+          // 来源：ai.volcengine.com/model + volcengine.com/product/doubao
+          // （2026-10-29 抓取）；汇率沿用 1 USD = 6.666 CNY → $0.0001875/second。
+          pricing: { per_second: 0.0001875 },
+          adapter: {
+            auth_style: 'x-api-key',
+            resource_id: 'volc.seedasr.sauc.duration',
+            submit_path: '/api/v3/plan/sauc/bigmodel_async',
+          },
+          note: '双流实时转写；WAV PCM 16kHz/16bit/单声道（客户端上传裸 PCM，声明 format=pcm）。',
+        },
+        {
+          id: 'seed-asr-2-nostream',
+          model: 'bigmodel',
+          display_name: '豆包语音识别 Seed ASR（单流）',
+          modalities: ['audio'],
+          supports_json: false,
+          supports_stream: false,
+          // 与 seed-asr-2-async 同价：4.5 元/小时 → $0.0001875/second。
+          // 来源同上（火山引擎公开价，2026-10-29）。
+          pricing: { per_second: 0.0001875 },
+          adapter: {
+            auth_style: 'x-api-key',
+            resource_id: 'volc.seedasr.sauc.duration',
+            submit_path: '/api/v3/plan/sauc/bigmodel_nostream',
+            nonstream: true,
+          },
+          note: '单流准确率优先，全部发完或 15s 后统一返回。',
         },
       ],
     },

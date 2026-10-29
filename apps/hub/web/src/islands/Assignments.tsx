@@ -189,7 +189,7 @@ export default function Assignments() {
           onChange={(e) => setActiveProject(e.target.value)}
         >
           {projects.map((p) => (
-            <option value={p.id}>{p.slug}</option>
+            <option key={p.id} value={p.id}>{p.slug}</option>
           ))}
         </select>
         <button
@@ -219,14 +219,14 @@ export default function Assignments() {
           );
           if (sectionModels.length === 0) return null;
           return (
-            <div className="panel">
+            <div className="panel" key={section.key}>
               <h3 className="section-title">{section.label}</h3>
               {sectionModels.map((m) => {
                 const draft = drafts[m.id] ?? emptyDraft();
                 const asnId = assignmentIdByModel[m.id];
                 const l4 = health.find((h) => h.assignment_id === asnId);
                 return (
-                  <div className="assign-row">
+                  <div className="assign-row" key={m.id}>
                     <label className="assign-head">
                       <input
                         type="checkbox"

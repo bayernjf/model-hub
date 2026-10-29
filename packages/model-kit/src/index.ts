@@ -8,6 +8,12 @@ import {
 import { pingHub, runTest } from './health.js';
 import { completeJson, streamChat } from './driver.js';
 import type { ChatMessage, ChatResult, StreamChunk } from './driver.js';
+import { embedJson, generateImage, generateVideo } from './media.js';
+import type { EmbedResult, ImageResult, VideoResult } from './media.js';
+import { synthesize } from './audio.js';
+import type { TtsResult } from './audio.js';
+import { nodeWsFactory, transcribe } from './asr.js';
+import type { AsrResult, AsrSocketFactory } from './asr.js';
 import { reportUsageInBackground } from './reporter.js';
 import type {
   CatalogResponse,
@@ -273,6 +279,110 @@ export class ModelKit {
     this.reportUsage(alias, model, usage, 200);
   }
 
+  // Embed text into vectors (synchronous).
+  async embed(
+    alias: string,
+    input: string | string[],
+    opts?: { signal?: AbortSignal | undefined },
+  ): Promise<EmbedResult> {
+    const model = this.resolve(alias);
+    const result = await embedJson(
+      { model, input, signal: opts?.signal },
+      this.fetchImpl,
+    );
+    this.reportUsage(alias, model, null, result.httpStatus);
+    return result;
+  }
+
+  // Generate an image (synchronous); returns the image URL.
+  async image(
+    alias: string,
+    prompt: string,
+    opts?: { size?: string | undefined; signal?: AbortSignal | undefined },
+  ): Promise<ImageResult> {
+    const model = this.resolve(alias);
+    const result = await generateImage(
+      { model, prompt, size: opts?.size, signal: opts?.signal },
+      this.fetchImpl,
+    );
+    this.reportUsage(alias, model, null, result.httpStatus);
+    return result;
+  }
+
+  // Generate a video (async submit + poll per the adapter dialect); returns the
+  // final video URL once the task completes.
+  async video(
+    alias: string,
+    prompt: string,
+    opts?: {
+      signal?: AbortSignal | undefined;
+      pollTimeoutMs?: number | undefined;
+    },
+  ): Promise<VideoResult> {
+    const model = this.resolve(alias);
+    const result = await generateVideo(
+      {
+        model,
+        prompt,
+        signal: opts?.signal,
+        pollTimeoutMs: opts?.pollTimeoutMs,
+      },
+      this.fetchImpl,
+    );
+    this.reportUsage(alias, model, null, result.httpStatus);
+    return result;
+  }
+
+  // Synthesize speech (HTTP TTS). Returns decoded audio bytes (Doubao voice)
+  // or a URL (OpenAI-compatible TTS).
+  async tts(
+    alias: string,
+    text: string,
+    opts?: { signal?: AbortSignal | undefined },
+  ): Promise<TtsResult> {
+    const model = this.resolve(alias);
+    const result = await synthesize(
+      { model, text, signal: opts?.signal },
+      this.fetchImpl,
+    );
+    this.reportUsage(alias, model, null, result.httpStatus);
+    return result;
+  }
+
+  // Recognize speech (ASR over the SAUC binary WebSocket protocol). Returns
+  // the transcript text plus per-utterance details.
+  async asr(
+    alias: string,
+    audio: Uint8Array,
+    opts?: {
+      chunkMs?: number | undefined;
+      timeoutMs?: number | undefined;
+      rawPcm?: boolean | undefined;
+      uid?: string | undefined;
+      signal?: AbortSignal | undefined;
+      request?: Record<string, unknown> | undefined;
+    },
+  ): Promise<AsrResult> {
+    const model = this.resolve(alias);
+    const factory: AsrSocketFactory =
+      this.options.webSocketFactory ?? nodeWsFactory;
+    const result = await transcribe(
+      {
+        model,
+        audio,
+        chunkMs: opts?.chunkMs,
+        timeoutMs: opts?.timeoutMs,
+        rawPcm: opts?.rawPcm,
+        uid: opts?.uid,
+        signal: opts?.signal,
+        request: opts?.request,
+      },
+      factory,
+    );
+    this.reportUsage(alias, model, null, 200);
+    return result;
+  }
+
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
@@ -311,6 +421,29 @@ export type {
   StreamChunk,
   TokenUsage,
 } from './driver.js';
+
+export { embedJson, generateImage, generateVideo } from './media.js';
+export type { EmbedResult, ImageResult, VideoResult } from './media.js';
+
+export { synthesize } from './audio.js';
+export type { TtsResult } from './audio.js';
+
+export {
+  buildAudioOnly,
+  buildFullRequest,
+  nodeWsFactory,
+  parseFrame,
+  parseWav,
+  transcribe,
+} from './asr.js';
+export type {
+  AsrResult,
+  AsrSocket,
+  AsrSocketFactory,
+  ParsedAsrFrame,
+  TranscribeCall,
+  WavData,
+} from './asr.js';
 
 export { postUsage, reportUsageInBackground } from './reporter.js';
 export type { UsageInput } from './reporter.js';

@@ -10,4 +10,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/models', label: '模型' },
   { href: '/projects', label: '项目' },
   { href: '/assignments', label: '分配' },
+  { href: '/costs', label: '成本' },
 ];

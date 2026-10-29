@@ -9,4 +9,3 @@ data
 .gitignore
 *.log
 .DS_Store
-apps/hub/web

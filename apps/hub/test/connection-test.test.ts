@@ -5,6 +5,7 @@ import {
   type FetchLike,
   type ProviderTestInput,
   type ModelTestInput,
+  type AsrProbeSocketFactory,
 } from '../src/connection-test.js';
 import { SlidingWindowRateLimiter } from '../src/rate-limit.js';
 import type { ModelView } from '../src/repositories/models.js';
@@ -299,5 +300,219 @@ describe('testModel (L2)', () => {
     );
     expect(result.ok).toBe(true);
     expect(spy).toHaveBeenCalledOnce();
+  });
+
+  it('synthesizes audio via the x-api-key dialect (openspeech)', async () => {
+    const model = makeModel({
+      modalities: ['audio'],
+      model: 'seed-tts-2.0',
+      adapter: {
+        auth_style: 'x-api-key',
+        resource_id: 'seed-tts-2.0',
+        submit_path: '/api/v3/plan/tts/unidirectional',
+        create_body: {
+          speaker: 'zh_female_vv_uranus_bigtts',
+          audio_params: { format: 'mp3', sample_rate: 24000 },
+        },
+      },
+    });
+    let capturedHeaders: Record<string, string> = {};
+    let capturedBody = '';
+    const spy: FetchLike = async (_url, init) => {
+      capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
+      capturedBody = String(init?.body);
+      return jsonResponse(200, {
+        code: 0,
+        data: Buffer.from('fake-mp3').toString('base64'),
+      });
+    };
+    const result = await testModel(modelTestInput(model), spy);
+    expect(result.ok).toBe(true);
+    expect(capturedHeaders['X-Api-Key']).toBe('sk-test');
+    expect(capturedHeaders['X-Api-Resource-Id']).toBe('seed-tts-2.0');
+    expect(capturedHeaders.Authorization).toBeUndefined();
+    const parsed = JSON.parse(capturedBody) as {
+      req_params: { text: string; speaker: string };
+    };
+    expect(parsed.req_params.text).toBe('hi');
+    expect(parsed.req_params.speaker).toBe('zh_female_vv_uranus_bigtts');
+  });
+
+  it('flags openspeech semantic errors as dialect_mismatch', async () => {
+    const model = makeModel({
+      modalities: ['audio'],
+      model: 'seed-tts-2.0',
+      adapter: {
+        auth_style: 'x-api-key',
+        resource_id: 'seed-tts-2.0',
+        submit_path: '/api/v3/plan/tts/unidirectional',
+      },
+    });
+    const spy: FetchLike = () =>
+      Promise.resolve(
+        jsonResponse(200, { code: 45000000, message: 'bad params' }),
+      );
+    const result = await testModel(modelTestInput(model), spy);
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('dialect_mismatch');
+  });
+
+  it('uses the bearer dialect for openai-compatible TTS', async () => {
+    const model = makeModel({
+      modalities: ['audio'],
+      model: 'gpt-4o-mini-tts',
+      endpoints_override: { audio: '/audio/speech' },
+    });
+    let capturedHeaders: Record<string, string> = {};
+    let capturedBody = '';
+    const spy: FetchLike = async (_url, init) => {
+      capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
+      capturedBody = String(init?.body);
+      return new Response('raw-audio-bytes', { status: 200 });
+    };
+    const result = await testModel(modelTestInput(model), spy);
+    expect(result.ok).toBe(true);
+    expect(capturedHeaders.Authorization).toBe('Bearer sk-test');
+    const parsed = JSON.parse(capturedBody) as {
+      model: string;
+      input: string;
+    };
+    expect(parsed.model).toBe('gpt-4o-mini-tts');
+    expect(parsed.input).toBe('hi');
+  });
+
+  it('falls back to a TTS probe for a voice-only provider', async () => {
+    let capturedHeaders: Record<string, string> = {};
+    const spy: FetchLike = async (_url, init) => {
+      capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
+      return jsonResponse(200, {
+        code: 0,
+        data: Buffer.from('fake-mp3').toString('base64'),
+      });
+    };
+    const result = await testProvider(
+      {
+        base_url: 'https://openspeech.bytedance.com',
+        api_key: 'sk-test',
+        protocol: 'openai-compatible',
+        billing_type: 'payg',
+        preset_id: 'openspeech',
+      },
+      spy,
+    );
+    expect(result.ok).toBe(true);
+    expect(capturedHeaders['X-Api-Key']).toBe('sk-test');
+    expect(capturedHeaders['X-Api-Resource-Id']).toBe('seed-tts-2.0');
+  });
+});
+
+describe('ASR WebSocket probe', () => {
+  function asrModel(over: Partial<ModelView> = {}): ModelView {
+    return makeModel({
+      modalities: ['audio'],
+      model: 'bigmodel',
+      adapter: {
+        auth_style: 'x-api-key',
+        resource_id: 'volc.seedasr.sauc.duration',
+        submit_path: '/api/v3/plan/sauc/bigmodel_async',
+      },
+      ...over,
+    });
+  }
+
+  function fakeFactory(opts: {
+    onOpen?: boolean;
+    upgradeStatus?: number;
+    error?: boolean;
+  }): AsrProbeSocketFactory {
+    return (_url, _headers) => {
+      const handlers: {
+        open?: () => void;
+        error?: (err: Error) => void;
+        upgrade?: (res: { status: number }) => void;
+      } = {};
+      const socket = {
+        onOpen: (cb: () => void) => {
+          handlers.open = cb;
+        },
+        onError: (cb: (err: Error) => void) => {
+          handlers.error = cb;
+        },
+        onUnexpectedResponse: (cb: (res: { status: number }) => void) => {
+          handlers.upgrade = cb;
+        },
+        close: () => {},
+      };
+      // Fire synchronously to keep the test deterministic.
+      if (opts.onOpen) queueMicrotask(() => handlers.open?.());
+      if (opts.upgradeStatus !== undefined)
+        queueMicrotask(() => handlers.upgrade?.({ status: opts.upgradeStatus! }));
+      if (opts.error) queueMicrotask(() => handlers.error?.(new Error('boom')));
+      return socket;
+    };
+  }
+
+  it('uses a fake socket factory to validate handshake success', async () => {
+    // Drive probeAsrWs indirectly: build a model whose submit_path is sauc,
+    // then run testModel with a factory injected through the module's export
+    // is not possible, so we exercise the happy path by checking the header
+    // contract via a captured factory below.
+    const captured: { url: string; headers: Record<string, string> }[] = [];
+    const factory: AsrProbeSocketFactory = (_url, headers) => {
+      captured.push({ url: _url, headers });
+      const handlers: Record<string, (arg?: unknown) => void> = {};
+      queueMicrotask(() => handlers.open?.());
+      return {
+        onOpen: (cb) => {
+          handlers.open = cb;
+        },
+        onError: () => {},
+        onUnexpectedResponse: () => {},
+        close: () => {},
+      };
+    };
+    // Direct import of probeAsrWs through the same module.
+    const { probeAsrWs } = await import('../src/connection-test.js');
+    const result = await probeAsrWs(
+      'https://openspeech.bytedance.com',
+      'sk-test',
+      asrModel(),
+      5_000,
+      factory,
+    );
+    expect(result.ok).toBe(true);
+    expect(captured[0]?.url).toBe(
+      'wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_async',
+    );
+    expect(captured[0]?.headers['X-Api-Key']).toBe('sk-test');
+    expect(captured[0]?.headers['X-Api-Resource-Id']).toBe(
+      'volc.seedasr.sauc.duration',
+    );
+  });
+
+  it('classifies a 401 WebSocket upgrade as unauthorized', async () => {
+    const { probeAsrWs } = await import('../src/connection-test.js');
+    const result = await probeAsrWs(
+      'https://openspeech.bytedance.com',
+      'sk-test',
+      asrModel(),
+      5_000,
+      fakeFactory({ upgradeStatus: 401 }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('unauthorized');
+  });
+
+  it('classifies a failed connection as network', async () => {
+    const { probeAsrWs } = await import('../src/connection-test.js');
+    const result = await probeAsrWs(
+      'https://openspeech.bytedance.com',
+      'sk-test',
+      asrModel(),
+      5_000,
+      fakeFactory({ error: true }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('network');
   });
 });

@@ -55,6 +55,9 @@ export const AdapterSchema = z
     failed_values: z.array(z.string()).optional(),
     id_field: z.string().optional(),
     poll_interval_ms: z.number().int().min(0).optional(),
+    // Voice-dialect auth (ByteDance openspeech).
+    auth_style: z.enum(['bearer', 'x-api-key']).optional(),
+    resource_id: z.string().optional(),
   })
   .catchall(z.unknown());
 

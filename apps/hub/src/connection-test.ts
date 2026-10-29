@@ -6,6 +6,9 @@
 import type { ModelView } from './repositories/models.js';
 import { getPresetProvider } from './presets/index.js';
 import type { Modality } from './presets/types.js';
+import WebSocket from 'ws';
+import type { IncomingMessage } from 'node:http';
+import type { ServerResponse } from 'node:http';
 
 export type ErrorCode =
   | 'network'
@@ -34,6 +37,9 @@ export interface TestResult {
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 export const TEST_TIMEOUT_MS = 15_000;
+// Image/video generation can legitimately take tens of seconds (a real
+// Seedream generation measured ~13.5s); the 15s chat timeout is too tight.
+export const GENERATION_TIMEOUT_MS = 60_000;
 
 function classifyStatus(status: number): ErrorCode {
   if (status === 401) return 'unauthorized';
@@ -239,6 +245,209 @@ async function probeModelsList(
   }
 }
 
+// Minimal TTS probe. Doubao voice (openspeech) uses X-Api-Key single-header
+// auth, an X-Api-Resource-Id header and a non-standard req_params body whose
+// response is chunked JSON with base64 `data` fields; OpenAI-compatible TTS
+// uses Bearer auth and returns JSON (url) or raw audio. The adapter carries
+// auth_style / resource_id / submit_path / create_body (speaker, ...).
+async function probeTts(
+  baseUrl: string,
+  apiKey: string,
+  model: ModelView,
+  timeoutMs: number,
+  fetchImpl: FetchLike,
+): Promise<TestResult> {
+  const a = model.adapter;
+  const path =
+    a?.submit_path ??
+    model.endpoints_override?.audio ??
+    '/v1/audio/speech';
+  const xApiKey = a?.auth_style === 'x-api-key';
+  const start = Date.now();
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (xApiKey) {
+      headers['X-Api-Key'] = apiKey;
+      if (a?.resource_id) headers['X-Api-Resource-Id'] = a.resource_id;
+    } else {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    const createBody = a?.create_body ?? {};
+    const body = xApiKey
+      ? { req_params: { text: 'hi', ...createBody } }
+      : { model: model.model, input: 'hi', ...createBody };
+    const res = await fetchImpl(joinUrl(baseUrl, path), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const latency = Date.now() - start;
+    if (!res.ok) {
+      return {
+        ok: false,
+        latency_ms: latency,
+        scope: 'model',
+        error: {
+          code: classifyStatus(res.status),
+          detail: await safeText(res),
+        },
+      };
+    }
+    const text = await res.text();
+    if (xApiKey) {
+      // Semantic errors arrive as HTTP 200 with a non-zero code.
+      const codeMatch = /"code"\s*:\s*(\d+)/.exec(text);
+      if (codeMatch && codeMatch[1] !== '0') {
+        return {
+          ok: false,
+          latency_ms: latency,
+          scope: 'model',
+          error: {
+            code: 'dialect_mismatch',
+            detail: text.slice(0, 300),
+            hint: '语音端点返回语义错误，检查 resource_id / body 方言',
+          },
+        };
+      }
+      const parts: string[] = [];
+      const re = /"data"\s*:\s*"([A-Za-z0-9+/=]+)"/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text)) !== null) parts.push(m[1]!);
+      if (parts.length === 0) {
+        return {
+          ok: false,
+          latency_ms: latency,
+          scope: 'model',
+          error: { code: 'dialect_mismatch', hint: '响应缺少 base64 音频块' },
+        };
+      }
+      return { ok: true, latency_ms: latency, scope: 'model' };
+    }
+    // Bearer dialect: a 200 is accepted regardless of body shape (JSON url or
+    // raw audio); a JSON error object with no audio/url is still accepted as a
+    // provider-level success for OpenAI-style TTS.
+    return { ok: true, latency_ms: latency, scope: 'model' };
+  } catch (err) {
+    return {
+      ok: false,
+      latency_ms: Date.now() - start,
+      scope: 'model',
+      error: { code: classifyFetchError(err) },
+    };
+  }
+}
+
+// Minimal ASR probe over WebSocket. ASR endpoints are WebSocket-only (no HTTP
+// route), so the L1/L2 connection test performs a handshake-only check: it
+// opens the socket with the voice-dialect headers (X-Api-Key /
+// X-Api-Resource-Id / X-Api-Request-Id / X-Api-Connect-Id / X-Api-Sequence)
+// and treats a successful open as auth + route + resource-id validation.
+// No audio is sent, so no per-second billing is incurred.
+export type AsrProbeSocket = {
+  onOpen(cb: () => void): void;
+  onError(cb: (err: Error) => void): void;
+  onUnexpectedResponse?(cb: (res: { status: number }) => void): void;
+  close(): void;
+};
+
+export type AsrProbeSocketFactory = (
+  url: string,
+  handshakeHeaders: Record<string, string>,
+) => AsrProbeSocket;
+
+export const nodeAsrProbeFactory: AsrProbeSocketFactory = (
+  url,
+  headers,
+) => {
+  const ws = new WebSocket(url, { headers });
+  return {
+    onOpen: (cb) => ws.once('open', cb),
+    onError: (cb) => ws.once('error', cb),
+    onUnexpectedResponse: (cb) =>
+      ws.once(
+        'unexpected-response',
+        (_req: IncomingMessage, res: ServerResponse) =>
+          cb({ status: res.statusCode }),
+      ),
+    close: () => ws.close(),
+  };
+};
+
+function toWsUrl(baseUrl: string, path: string): string {
+  const base = baseUrl
+    .replace(/\/+$/, '')
+    .replace(/^http:/, 'ws:')
+    .replace(/^https:/, 'wss:');
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${p}`;
+}
+
+export async function probeAsrWs(
+  baseUrl: string,
+  apiKey: string,
+  model: ModelView,
+  timeoutMs: number,
+  factory: AsrProbeSocketFactory = nodeAsrProbeFactory,
+): Promise<TestResult> {
+  const a = model.adapter;
+  const path = a?.submit_path ?? '/api/v3/plan/sauc/bigmodel_async';
+  const url = toWsUrl(baseUrl, path);
+  const start = Date.now();
+  const requestId = `probe-${Date.now()}`;
+  const headers: Record<string, string> = {
+    'X-Api-Key': apiKey,
+    'X-Api-Request-Id': requestId,
+    'X-Api-Connect-Id': requestId,
+    'X-Api-Sequence': '-1',
+  };
+  if (a?.resource_id) headers['X-Api-Resource-Id'] = a.resource_id;
+
+  return await new Promise<TestResult>((resolve) => {
+    const socket = factory(url, headers);
+    let settled = false;
+    const timer = setTimeout(() => {
+      settle(false, { code: 'network', hint: 'WebSocket 握手超时' });
+    }, timeoutMs);
+
+    const settle = (
+      ok: boolean,
+      error?: { code: ErrorCode; hint?: string },
+    ): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.close();
+      resolve({
+        ok,
+        latency_ms: Date.now() - start,
+        scope: 'model',
+        ...(ok ? {} : { error: { code: error!.code, hint: error!.hint } }),
+      });
+    };
+
+    socket.onOpen(() => settle(true));
+    socket.onError(() =>
+      settle(false, { code: 'network', hint: 'WebSocket 连接失败' }),
+    );
+    socket.onUnexpectedResponse?.((res) => {
+      const code =
+        res.status === 401
+          ? 'unauthorized'
+          : res.status === 403
+            ? 'forbidden'
+            : res.status === 404
+              ? 'model_not_found'
+              : res.status === 429
+                ? 'rate_limited'
+                : 'server_error';
+      settle(false, { code, hint: `WebSocket 升级被拒 (HTTP ${res.status})` });
+    });
+  });
+}
+
 export interface ProviderTestInput {
   base_url: string;
   api_key: string;
@@ -251,6 +460,12 @@ export interface ProviderTestInput {
 
 function hasModality(model: ModelView, modality: Modality): boolean {
   return model.modalities.includes(modality);
+}
+
+// ASR models speak the SAUC WebSocket binary protocol (submit_path contains
+// /sauc/); TTS models are plain HTTP. The adapter decides the probe transport.
+function isAsrModel(model: ModelView): boolean {
+  return model.adapter?.submit_path?.includes('/sauc/') ?? false;
 }
 
 // L1 provider test: prefer a minimal chat call when a text model is known
@@ -292,6 +507,52 @@ export async function testProvider(
         reasoning,
         timeoutMs: TEST_TIMEOUT_MS,
       },
+      fetchImpl,
+    );
+  }
+
+  // Voice-only provider (e.g. openspeech): synthesize a minimal clip as the
+  // auth/connectivity probe when an audio model is known.
+  const importedAudio = input.models?.find((m) => hasModality(m, 'audio'));
+  const presetAudio = preset?.models.find((m) =>
+    m.modalities.includes('audio'),
+  );
+  const audioModel = importedAudio ?? presetAudio;
+  if (audioModel) {
+    const modelView: ModelView = {
+      id: audioModel.id,
+      provider_id: 'preset',
+      preset_model_id: audioModel.id,
+      model: audioModel.model,
+      display_name: audioModel.display_name ?? null,
+      modalities: audioModel.modalities,
+      litellm_id: audioModel.litellm_id ?? null,
+      context_window: audioModel.context_window ?? null,
+      supports_json: audioModel.supports_json,
+      supports_stream: audioModel.supports_stream,
+      pricing: audioModel.pricing ?? {},
+      endpoints_override: null,
+      adapter: audioModel.adapter ?? null,
+      is_default: false,
+      sort_order: 0,
+      enabled: true,
+      reasoning: audioModel.reasoning ?? false,
+      created_at: '',
+      updated_at: '',
+    };
+    if (isAsrModel(modelView)) {
+      return probeAsrWs(
+        input.base_url,
+        input.api_key,
+        modelView,
+        TEST_TIMEOUT_MS,
+      );
+    }
+    return probeTts(
+      input.base_url,
+      input.api_key,
+      modelView,
+      TEST_TIMEOUT_MS,
       fetchImpl,
     );
   }
@@ -364,6 +625,20 @@ async function probeVideoSubmit(
 ): Promise<TestResult> {
   const path = model.endpoints_override?.videos ?? '/videos';
   const start = Date.now();
+  // Video submit bodies differ per provider: the default is {model, prompt, duration};
+  // an adapter supplies create_body / seconds_field / omit_duration for its dialect
+  // (Agnes uses seconds + mode + size and rejects a `duration` field).
+  const adapter = model.adapter;
+  const body: Record<string, unknown> = { model: model.model, prompt: 'test' };
+  if (adapter?.create_body) Object.assign(body, adapter.create_body);
+  if (!adapter?.omit_duration) {
+    const durField = adapter?.seconds_field ?? 'duration';
+    const [lo, hi] = adapter?.seconds_range ?? [4, 12];
+    const durValue = adapter?.seconds_field
+      ? String(Math.min(hi, Math.max(lo, 5)))
+      : 1;
+    body[durField] = durValue;
+  }
   try {
     const res = await fetchImpl(joinUrl(baseUrl, path), {
       method: 'POST',
@@ -371,7 +646,7 @@ async function probeVideoSubmit(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ model: model.model, prompt: 'test', duration: 1 }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
     const latency = Date.now() - start;
@@ -456,6 +731,24 @@ export async function testModel(
     );
   }
 
+  if (model.modalities.includes('audio')) {
+    if (isAsrModel(model)) {
+      return probeAsrWs(
+        input.base_url,
+        input.api_key,
+        model,
+        GENERATION_TIMEOUT_MS,
+      );
+    }
+    return probeTts(
+      input.base_url,
+      input.api_key,
+      model,
+      GENERATION_TIMEOUT_MS,
+      fetchImpl,
+    );
+  }
+
   if (
     model.modalities.includes('image') ||
     model.modalities.includes('video')
@@ -474,7 +767,7 @@ export async function testModel(
         input.base_url,
         input.api_key,
         model,
-        TEST_TIMEOUT_MS,
+        GENERATION_TIMEOUT_MS,
         fetchImpl,
       );
     }
@@ -482,7 +775,7 @@ export async function testModel(
       input.base_url,
       input.api_key,
       model,
-      TEST_TIMEOUT_MS,
+      GENERATION_TIMEOUT_MS,
       fetchImpl,
     );
   }

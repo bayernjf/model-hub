@@ -38,6 +38,18 @@ export interface AdapterConfig {
   result_url_path?: string | undefined;
   duration_path?: string | undefined;
   seconds_field?: string | undefined;
+  // Video-dialect extras used by the media driver to build submit/poll calls.
+  create_body?: Record<string, unknown> | undefined;
+  seconds_range?: [number, number] | undefined;
+  omit_duration?: boolean | undefined;
+  aspect_as_ratio?: boolean | undefined;
+  max_n?: number | undefined;
+  first_frame_path?: string | undefined;
+  images_path?: string | undefined;
+  // Voice-dialect extras: X-Api-Key single-header auth (vs bearer) and the
+  // resource id that selects the model version (e.g. seed-tts-2.0).
+  auth_style?: 'bearer' | 'x-api-key' | undefined;
+  resource_id?: string | undefined;
   [key: string]: unknown;
 }
 
@@ -139,6 +151,8 @@ export interface ModelKitOptions {
   envFallback?: EnvFallback;
   // Optional fetch override (tests).
   fetch?: typeof fetch;
+  // Optional WebSocket factory for ASR (tests / browser transport).
+  webSocketFactory?: import('./asr.js').AsrSocketFactory;
   // Cache refresh interval in ms (default 5 minutes).
   refreshIntervalMs?: number;
 }

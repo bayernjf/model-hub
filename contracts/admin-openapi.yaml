@@ -1,0 +1,834 @@
+openapi: 3.1.0
+info:
+  title: model-hub admin API
+  version: 0.1.0
+  summary: Owner-facing management surface for the model-hub control plane.
+  description: >
+    Cookie-session admin API used by the Astro console and the owner. The
+    project-facing /pub/v1 API is documented in openapi.yaml. Endpoints marked
+    "owner" require the owner role; others accept any authenticated admin.
+    Mutating endpoints bump the catalog revision and write an audit record.
+    Login is rate limited (10 failures / 15 min / IP); connection tests are
+    limited to 20 / hour / IP.
+servers:
+  - url: https://model-hub.internal
+    description: Co-hosted intranet hub (Caddy HTTPS, Tailscale-only).
+  - url: http://localhost:8791
+    description: Local development.
+
+security:
+  - AdminSession: []
+
+tags:
+  - { name: session, description: Login, current user, logout. }
+  - { name: providers, description: Provider entities and connection tests. }
+  - { name: models, description: Models, presets and connection tests. }
+  - { name: projects, description: Projects and their tokens. }
+  - { name: assignments, description: Alias/role assignments. }
+  - { name: reporting, description: Health checks, costs and status. }
+
+paths:
+  # ── Session ──────────────────────────────────────────────────────────────
+  /api/admin/session:
+    post:
+      tags: [session]
+      summary: Log in (public; rate limited).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Logged in; sets the session cookie.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: model_hub_session HttpOnly cookie.
+        '401': { $ref: '#/components/responses/InvalidCredentials' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    get:
+      tags: [session]
+      summary: Current authenticated user.
+      responses:
+        '200':
+          description: Current user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [session]
+      summary: Log out and clear the session cookie.
+      responses:
+        '200':
+          description: Logged out.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ── Providers ────────────────────────────────────────────────────────────
+  /api/admin/providers:
+    get:
+      tags: [providers]
+      summary: List providers (no secrets).
+      responses:
+        '200':
+          description: Providers.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items: { $ref: '#/components/schemas/Provider' }
+    post:
+      tags: [providers]
+      summary: Create a provider (owner).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProviderCreate' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider: { $ref: '#/components/schemas/Provider' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /api/admin/providers/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ProviderId' }
+    get:
+      tags: [providers]
+      summary: Get a provider.
+      responses:
+        '200':
+          description: Provider.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider: { $ref: '#/components/schemas/Provider' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [providers]
+      summary: Update a provider (owner).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProviderUpdate' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider: { $ref: '#/components/schemas/Provider' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [providers]
+      summary: Delete a provider (owner).
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/admin/providers/{id}/test:
+    parameters:
+      - { $ref: '#/components/parameters/ProviderId' }
+    post:
+      tags: [providers]
+      summary: L1 provider connection test (owner; rate limited).
+      responses:
+        '200':
+          description: Connection test result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConnectionTest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/admin/providers/{id}/models:
+    parameters:
+      - { $ref: '#/components/parameters/ProviderId' }
+    get:
+      tags: [models]
+      summary: List models under a provider.
+      responses:
+        '200':
+          description: Models.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items: { $ref: '#/components/schemas/Model' }
+    post:
+      tags: [models]
+      summary: Manually enter a model (owner).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ManualModel' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model: { $ref: '#/components/schemas/Model' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /api/admin/providers/{id}/models/import:
+    parameters:
+      - { $ref: '#/components/parameters/ProviderId' }
+    post:
+      tags: [models]
+      summary: Batch-import preset models (owner).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportModels' }
+      responses:
+        '201':
+          description: Import summary.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  # ── Models ───────────────────────────────────────────────────────────────
+  /api/admin/models:
+    get:
+      tags: [models]
+      summary: List all models across providers.
+      responses:
+        '200':
+          description: Models.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items: { $ref: '#/components/schemas/Model' }
+
+  /api/admin/models/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ModelId' }
+    patch:
+      tags: [models]
+      summary: Apply owner overlay fields (owner).
+      description: >
+        Strict allow-list: modalities, pricing, enabled, is_default, sort_order,
+        reasoning. Any credential or dialect field is rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModelOverlay' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model: { $ref: '#/components/schemas/Model' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [models]
+      summary: Retire a model (owner).
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/admin/models/{id}/test:
+    parameters:
+      - { $ref: '#/components/parameters/ModelId' }
+    post:
+      tags: [models]
+      summary: L2 single-model connection test (owner; rate limited).
+      description: Pass ?deep=true for a paid generation; the UI confirms cost.
+      parameters:
+        - name: deep
+          in: query
+          schema: { type: boolean, enum: [true] }
+      responses:
+        '200':
+          description: Connection test result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConnectionTest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  # ── Presets ──────────────────────────────────────────────────────────────
+  /api/admin/presets:
+    get:
+      tags: [models]
+      summary: Versioned preset catalog (no credentials).
+      responses:
+        '200':
+          description: Preset catalog.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PresetCatalog' }
+
+  # ── Projects ─────────────────────────────────────────────────────────────
+  /api/admin/projects:
+    get:
+      tags: [projects]
+      summary: List projects.
+      responses:
+        '200':
+          description: Projects.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+    post:
+      tags: [projects]
+      summary: Create a project (owner).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectCreate' }
+      responses:
+        '201':
+          description: Created with tokens.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: { $ref: '#/components/schemas/ProjectDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409':
+          description: Slug conflict.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code: { type: string, example: slug_conflict }
+
+  /api/admin/projects/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+    get:
+      tags: [projects]
+      summary: Get a project with its tokens.
+      responses:
+        '200':
+          description: Project detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: { $ref: '#/components/schemas/ProjectDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [projects]
+      summary: Update a project (owner).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectUpdate' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: { $ref: '#/components/schemas/ProjectDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [projects]
+      summary: Delete a project (owner).
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/admin/projects/{id}/rotate-token:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+    post:
+      tags: [projects]
+      summary: Mint a project token; plaintext returned once (owner).
+      responses:
+        '201':
+          description: New token and its view.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  token_view: { $ref: '#/components/schemas/Token' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/admin/projects/tokens/{tokenId}:
+    parameters:
+      - name: tokenId
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [projects]
+      summary: Enable or disable a token (owner).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+              required: [enabled]
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ── Assignments ──────────────────────────────────────────────────────────
+  /api/admin/assignments:
+    get:
+      tags: [assignments]
+      summary: List assignments, optionally scoped to a project.
+      parameters:
+        - name: project
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Assignments.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assignments:
+                    type: array
+                    items: { $ref: '#/components/schemas/Assignment' }
+    put:
+      tags: [assignments]
+      summary: Replace a project's assignment set in one batch (owner).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignmentReplace' }
+      responses:
+        '200':
+          description: Replaced.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assignments:
+                    type: array
+                    items: { $ref: '#/components/schemas/Assignment' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  # ── Reporting ────────────────────────────────────────────────────────────
+  /api/admin/health-checks:
+    get:
+      tags: [reporting]
+      summary: Latest L3/L4 results, optionally scoped to a project.
+      parameters:
+        - name: project
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Health checks.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  health_checks:
+                    type: array
+                    items: { $ref: '#/components/schemas/HealthCheck' }
+
+  /api/admin/status:
+    get:
+      tags: [reporting]
+      summary: Current catalog revision.
+      responses:
+        '200':
+          description: Status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revision: { type: integer }
+
+  /api/admin/costs:
+    get:
+      tags: [reporting]
+      summary: Cross-project cost dashboard (builtin cost; byok volume only).
+      responses:
+        '200':
+          description: Cost dashboard.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CostDashboard' }
+
+components:
+  securitySchemes:
+    AdminSession:
+      type: apiKey
+      in: cookie
+      name: model_hub_session
+
+  parameters:
+    ProviderId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    ModelId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    ProjectId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Missing or expired session.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidCredentials:
+      description: Invalid username or password.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string, example: invalid_credentials }
+    NotFound:
+      description: Entity not found.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string, example: not_found }
+    ValidationError:
+      description: Invalid request.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string, example: validation_error }
+                  field: { type: string }
+                  message: { type: string }
+    RateLimited:
+      description: Too many requests.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string, example: rate_limited }
+                  hint: { type: string }
+
+  schemas:
+    Ok:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            detail: { type: string }
+            hint: { type: string }
+    LoginRequest:
+      type: object
+      properties:
+        username: { type: string }
+        password: { type: string }
+      required: [username, password]
+    SessionResponse:
+      type: object
+      properties:
+        user:
+          type: object
+          properties:
+            username: { type: string }
+            role: { type: string, enum: [owner, admin] }
+    Provider:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        protocol: { type: string }
+        base_url: { type: string }
+        preset_id: { type: string, nullable: true }
+        billing_type: { type: string }
+        api_key_hint: { type: string, nullable: true }
+        enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ProviderCreate:
+      type: object
+      properties:
+        name: { type: string }
+        protocol: { type: string }
+        base_url: { type: string }
+        preset_id: { type: string }
+        billing_type: { type: string }
+        api_key: { type: string }
+        enabled: { type: boolean }
+      required: [name, protocol, base_url]
+    ProviderUpdate:
+      type: object
+      additionalProperties: true
+    Model:
+      type: object
+      properties:
+        id: { type: string }
+        provider_id: { type: string }
+        model: { type: string }
+        display_name: { type: string, nullable: true }
+        modalities:
+          type: array
+          items: { type: string }
+        litellm_id: { type: string, nullable: true }
+        context_window: { type: integer, nullable: true }
+        supports_json: { type: boolean }
+        supports_stream: { type: boolean }
+        reasoning: { type: boolean }
+        pricing: { type: object, additionalProperties: true }
+        endpoints: { type: object, additionalProperties: true }
+        adapter: { type: object, additionalProperties: true }
+        is_default: { type: boolean }
+        sort_order: { type: integer }
+        enabled: { type: boolean }
+    ManualModel:
+      type: object
+      properties:
+        model: { type: string }
+        display_name: { type: string }
+        modalities:
+          type: array
+          items: { type: string }
+        litellm_id: { type: string }
+        context_window: { type: integer }
+        supports_json: { type: boolean }
+        supports_stream: { type: boolean }
+        pricing: { type: object, additionalProperties: true }
+        endpoints: { type: object, additionalProperties: true }
+        adapter: { type: object, additionalProperties: true }
+        is_default: { type: boolean }
+        sort_order: { type: integer }
+        enabled: { type: boolean }
+        reasoning: { type: boolean }
+      required: [model, display_name, modalities]
+    ModelOverlay:
+      type: object
+      properties:
+        modalities:
+          type: array
+          items: { type: string }
+        pricing: { type: object, additionalProperties: true }
+        enabled: { type: boolean }
+        is_default: { type: boolean }
+        sort_order: { type: integer }
+        reasoning: { type: boolean }
+    ImportModels:
+      type: object
+      properties:
+        preset_provider_id: { type: string }
+        model_ids:
+          type: array
+          items: { type: string }
+      required: [preset_provider_id, model_ids]
+    PresetCatalog:
+      type: object
+      properties:
+        catalog_version: { type: string }
+        sourcing_note: { type: string }
+        presets:
+          type: array
+          items: { type: object, additionalProperties: true }
+    Project:
+      type: object
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        display_name: { type: string }
+        enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ProjectCreate:
+      type: object
+      properties:
+        slug: { type: string }
+        display_name: { type: string }
+        enabled: { type: boolean }
+      required: [slug, display_name]
+    ProjectUpdate:
+      type: object
+      properties:
+        display_name: { type: string }
+        enabled: { type: boolean }
+    Token:
+      type: object
+      properties:
+        id: { type: string }
+        token_hint: { type: string, nullable: true }
+        enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: string, format: date-time, nullable: true }
+    ProjectDetail:
+      allOf:
+        - { $ref: '#/components/schemas/Project' }
+        - type: object
+          properties:
+            tokens:
+              type: array
+              items: { $ref: '#/components/schemas/Token' }
+    Assignment:
+      type: object
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        model_id: { type: string }
+        alias: { type: string, nullable: true }
+        role: { type: string }
+        daily_budget_micros: { type: integer, nullable: true }
+    AssignmentReplace:
+      type: object
+      properties:
+        project_id: { type: string }
+        assignments:
+          type: array
+          items:
+            type: object
+            properties:
+              model_id: { type: string }
+              alias: { type: string }
+              role: { type: string }
+              daily_budget_micros: { type: integer }
+            required: [model_id]
+      required: [project_id, assignments]
+    ConnectionTest:
+      type: object
+      properties:
+        ok: { type: boolean }
+        latency_ms: { type: integer }
+        scope: { type: string, enum: [provider, model] }
+        error:
+          type: object
+          nullable: true
+          properties:
+            code: { type: string }
+            hint: { type: string }
+            detail: { type: string }
+    HealthCheck:
+      type: object
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        assignment_id: { type: string, nullable: true }
+        alias: { type: string, nullable: true }
+        level: { type: string, enum: [L3, L4] }
+        ok: { type: boolean }
+        latency_ms: { type: integer }
+        error_code: { type: string, nullable: true }
+        ts: { type: string, format: date-time }
+    CostDashboard:
+      type: object
+      properties:
+        totals: { type: object, additionalProperties: true }
+        by_project:
+          type: array
+          items: { type: object, additionalProperties: true }
+        by_day:
+          type: array
+          items: { type: object, additionalProperties: true }
+        by_model:
+          type: array
+          items: { type: object, additionalProperties: true }

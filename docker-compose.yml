@@ -1,6 +1,6 @@
-# Local/staging skeleton. Production co-hosting (Caddy reverse proxy,
-# Tailscale-only exposure, Litestream backups) is defined in W7-5 and the
-# bayjf deployment docs.
+# model-hub single-host deployment (tech doc §11, decided 2026-10-28):
+# co-hosted with the zeus/loom stack on the same machine; loopback-only
+# binding, Caddy terminates HTTPS over Tailscale/LAN only.
 services:
   model-hub:
     build:
@@ -18,6 +18,22 @@ services:
       - "127.0.0.1:8791:8791"
     volumes:
       - model-hub-data:/data
+    restart: unless-stopped
+
+  # SQLite snapshot loop (scripts/backup-hub.sh): consistent .backup copies to
+  # a host-mounted ./backups dir, pruned after RETENTION_DAYS.
+  backup:
+    image: node:22-slim
+    depends_on:
+      - model-hub
+    volumes:
+      - model-hub-data:/data:ro
+      - ./backups:/backups
+      - ./scripts/backup-hub.sh:/scripts/backup-hub.sh:ro
+    environment:
+      BACKUP_INTERVAL_SECONDS: ${HUB_BACKUP_INTERVAL_SECONDS:-86400}
+      RETENTION_DAYS: ${HUB_BACKUP_RETENTION_DAYS:-7}
+    entrypoint: ["sh", "/scripts/backup-hub.sh"]
     restart: unless-stopped
 
 volumes:
