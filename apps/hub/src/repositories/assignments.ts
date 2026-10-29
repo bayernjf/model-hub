@@ -99,7 +99,8 @@ export class AssignmentRepository {
     }
 
     const aliases = new Set<string>();
-    const models = new Set<string>();
+    const allModels = new Set<string>();
+    const aliasLessModels = new Set<string>();
     for (const input of inputs) {
       if (!this.modelExists(input.model_id)) {
         throw new AssignmentValidationError(
@@ -107,13 +108,6 @@ export class AssignmentRepository {
           `model not found: ${input.model_id}`,
         );
       }
-      if (models.has(input.model_id)) {
-        throw new AssignmentValidationError(
-          'duplicate_model',
-          `model assigned twice: ${input.model_id}`,
-        );
-      }
-      models.add(input.model_id);
 
       const role = input.role ?? 'primary';
       if (!(ROLES as readonly string[]).includes(role)) {
@@ -123,8 +117,9 @@ export class AssignmentRepository {
         );
       }
 
+      let alias: string | null = null;
       if (input.alias !== undefined && input.alias !== null) {
-        const alias = input.alias.trim();
+        alias = input.alias.trim();
         if (alias.length === 0) {
           throw new AssignmentValidationError(
             'invalid_alias',
@@ -137,7 +132,23 @@ export class AssignmentRepository {
             `alias used twice: ${alias}`,
           );
         }
+        // The same model may repeat only when every row carries a distinct
+        // alias. It cannot coexist with an earlier alias-less row, which is
+        // indistinguishable from the aliased one.
+        if (aliasLessModels.has(input.model_id)) {
+          throw new AssignmentValidationError(
+            'duplicate_model',
+            `model already assigned without alias; give that row an alias`,
+          );
+        }
         aliases.add(alias);
+      } else if (allModels.has(input.model_id)) {
+        // Alias-less rows stay unique per model: an unlabeled duplicate is
+        // indistinguishable and serves no purpose.
+        throw new AssignmentValidationError(
+          'duplicate_model',
+          `model assigned twice; give each row a distinct alias`,
+        );
       }
 
       const budget = input.daily_budget_micros;
@@ -147,6 +158,9 @@ export class AssignmentRepository {
           'daily budget must be non-negative',
         );
       }
+
+      allModels.add(input.model_id);
+      if (alias === null) aliasLessModels.add(input.model_id);
     }
 
     const insert = this.db.prepare(
