@@ -5,7 +5,7 @@ import {
   Plus,
   XCircle,
 } from 'lucide-react';
-import { apiFetch, apiJson } from './api';
+import { apiFetch, apiJson, errorText } from './api';
 import type {
   Provider,
   PresetProvider,
@@ -123,24 +123,30 @@ export default function Providers() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [presets, setPresets] = useState<PresetProvider[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [results, setResults] = useState<Record<string, TestResult>>({});
   const [testing, setTesting] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const data = await apiJson<{ providers: Provider[] }>(
-      '/api/admin/providers',
-    );
-    setProviders(data.providers);
-    setLoading(false);
+  const refresh = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const [data, presetsData] = await Promise.all([
+        apiJson<{ providers: Provider[] }>('/api/admin/providers'),
+        apiJson<PresetsResponse>('/api/admin/presets'),
+      ]);
+      setProviders(data.providers);
+      setPresets(presetsData.presets);
+    } catch (err) {
+      setLoadError(errorText(err));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    void load();
-    void apiJson<PresetsResponse>('/api/admin/presets').then((d) =>
-      setPresets(d.presets),
-    );
-  }, [load]);
+    void refresh();
+  }, [refresh]);
 
   const runTest = useCallback(async (id: string) => {
     setTesting(id);
@@ -160,6 +166,19 @@ export default function Providers() {
     },
     [runTest],
   );
+
+  if (loadError) {
+    return (
+      <div className="panel stack">
+        <p className="error">加载失败：{loadError}</p>
+        <div>
+          <button className="btn" onClick={() => void refresh()}>
+            重试
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) return <Loader2 className="spin" />;
 

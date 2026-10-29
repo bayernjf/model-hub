@@ -5,7 +5,7 @@ import {
   Loader2,
   Plus,
 } from 'lucide-react';
-import { apiFetch, apiJson } from './api';
+import { apiFetch, apiJson, errorText } from './api';
 
 interface Project {
   id: string;
@@ -29,26 +29,33 @@ interface TokenView {
 export default function Projects() {
   const [projects, setProjects] = useState<ProjectDetail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [plainToken, setPlainToken] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    // The list endpoint returns summary rows; fetch details for tokens.
-    const list = await apiJson<{ projects: Project[] }>(
-      '/api/admin/projects',
-    );
-    const details = await Promise.all(
-      list.projects.map(async (p) => {
-        const d = await apiJson<{ project: ProjectDetail }>(
-          `/api/admin/projects/${p.id}`,
-        );
-        return d.project;
-      }),
-    );
-    setProjects(details);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      // The list endpoint returns summary rows; fetch details for tokens.
+      const list = await apiJson<{ projects: Project[] }>(
+        '/api/admin/projects',
+      );
+      const details = await Promise.all(
+        list.projects.map(async (p) => {
+          const d = await apiJson<{ project: ProjectDetail }>(
+            `/api/admin/projects/${p.id}`,
+          );
+          return d.project;
+        }),
+      );
+      setProjects(details);
+    } catch (err) {
+      setLoadError(errorText(err));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -91,6 +98,19 @@ export default function Projects() {
     },
     [load],
   );
+
+  if (loadError) {
+    return (
+      <div className="panel stack">
+        <p className="error">加载失败：{loadError}</p>
+        <div>
+          <button className="btn" onClick={() => void load()}>
+            重试
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) return <Loader2 className="spin" />;
 
