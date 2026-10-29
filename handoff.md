@@ -70,11 +70,28 @@
   路径一样返回 404；`x-api-key` 在该 host 上一律 401，只认 Bearer）。
 - 语音在 `openspeech.bytedance.com`，且**同一把 Ark Plan key 在该 host 上可用**
   （x-api-key；TTS 路由返回语义错误 45000000 而非 401，sauc 路由返回 405 说明存在）。
-- 但 volume 里**没有 OpenSpeech provider**，只有 Ark Plan 与 Agnes。若要在 hub 里
-  正式接入语音，需新建一个 provider：`base_url=https://openspeech.bytedance.com`、
-  复用同一把 key —— 我没有替你写库（会改动生产数据），等确认。
+- volume 里原本**没有 OpenSpeech provider**（只有 Ark Plan 与 Agnes）。已在
+  **owner 授权**下新建（见下「OpenSpeech provider 登记」）。
 - 两条 ASR preset 的 `submit_path`/`resource_id` 本身是对的，未改；只更新了注释里
   "尚未用真实 key 验证"的说法。
+
+### OpenSpeech provider 登记（2026-10-29，owner 授权后执行）
+
+- **provider**：`prov_4cc7051090a4168fb0139d4e94f1f508`，name=`OpenSpeech`，
+  `preset_id=openspeech`、`protocol=openai-compatible`、
+  `base_url=https://openspeech.bytedance.com`、`billing_type=subscription`、
+  `api_key_hint=****10d1`（与 Ark Plan 同一把 key，掩码一致）。
+- **写入方式**：一次性容器脚本（`model-hub:latest` 镜像内复用 hub dist 的
+  `ProviderRepository.create` + `writeAudit` + `RevisionService.bump`），key 仅
+  在进程内解密（从 Ark Plan 复用后重新信封加密落库），未落日志/未打印。
+  audit：`aud_8b30e8fb09552eb17cf3b9f5add36a4f`（actor=owner，
+  action=provider.create，detail 注明 owner-approved scripted write）；
+  `catalog_revision` bump 至 10。
+- **冒烟（写库后）**：从生产库解密 OpenSpeech key → `bigmodel_async` 双流真实
+  识别 → 输出与预期一致：`"今天的增长实验已经完成，请检查新的页面修复。"`
+  （含 utterances 逐词时间戳），916ms。验证了 解密→路由→握手→识别 全链路。
+- 分支状态更新：3 个 ASR 提交（`bb2e96b` fix、`0053697` test、`c83034b` docs）
+  已 push（`a2db6b2..c83034b`）。
 
 ## 已完成（任务10–17）
 
@@ -107,7 +124,8 @@
 
 ## 分支与提交
 
-- model-hub：`feature/m7-wrapup`（已 push：`cfdbe64..ffdad5c`，含 W7-5 部署修复）。
+- model-hub：`feature/m7-wrapup`（已 push：`cfdbe64..ffdad5c` 含 W7-5 部署修复；
+  `a2db6b2..c83034b` 含 ASR 真实联调的 fix/test/docs 三提交）。
 - zeus/loom：`feature/model-hub-integration`（未 push）。
 - growth-os：`feature/model-hub-optin`（未 push）。
 
@@ -137,7 +155,8 @@
      model-hub 适配注意：豆包语音是 X-Api-Key 单头 + 非标 body（text/speaker），
      现有 probe 系列为 Bearer + OpenAI 兼容，接入需方言适配（待办）。
    - 语音 ASR（`volc.seedasr.sauc.duration`）：仅 WebSocket 端点，model-hub 的 HTTP
-     连接测试无法覆盖，需 WebSocket 探测能力（待办）。
+     连接测试无法覆盖，需 WebSocket 探测能力（待办）。**provider 已于 2026-10-29
+     登记**（OpenSpeech，见「ASR 真实联调」小节），驱动已跑通双流/单流真实识别。
 2. W7-5 生产宿主机部署待定：本机 MacBook Docker 已实测全绿（镜像构建 + healthz +
    备份 + 模型拉取），制品可用。生产长驻部署改为**云服务器方案（最终选择，后续执行）**，
    原 zeus/loom 同机宿主机（hasee-2016-server）暂不可用。迁移要点见 DEPLOYMENT.md
@@ -175,9 +194,9 @@
 2. 【受阻】云服务器迁移：最终方案，需 owner 确认服务器资源与时间；要点见
    DEPLOYMENT.md §「云服务器迁移」（原 hasee-2016-server 不可用）。
 3. ~~ASR 真实联调~~ **已完成（2026-10-29）**：双流/单流均对真实端点返回正确文本，
-   并修出三处只有真实服务端才暴露的 wire 缺陷（见上「ASR 真实联调」）。遗留：volume
-   里没有 OpenSpeech provider，若要在 hub 内接入需新建一个（base
-   `https://openspeech.bytedance.com`，复用同一把 key）。
+   并修出三处只有真实服务端才暴露的 wire 缺陷（见上「ASR 真实联调」）。**OpenSpeech
+   provider 已登记**（`prov_4cc7051090a4168fb0139d4e94f1f508`，复用 Ark Plan key，
+   写库后双流冒烟通过）。
 4. TTS 真实联调：HTTP 已真实合成过 MP3，可再补一次端到端回归并固化音色。
 5. 视频 Agnes 真实生成复测：队列曾满（video_queue_full），待平台恢复后 deep 复测；
    probeVideoSubmit 已按方言适配（create_body/seconds_field/omit_duration）。
