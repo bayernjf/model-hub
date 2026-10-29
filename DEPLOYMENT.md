@@ -106,3 +106,20 @@ ls -lh ./backups/
    把 §拓扑 Caddy 片段的 `host.docker.internal:8791` 换成 `127.0.0.1:8791` 即可。
 
 迁移成本集中在第 5 步（域名 + TLS 证书），Docker 层面零改造。
+
+### 一键脚本（推荐）
+
+上述 5 步已脚本化为 `scripts/migrate-to-cloud.sh`（幂等可重跑，明文密钥
+不跨机复制）：
+
+```bash
+# 本机（导出侧）：导出镜像 + 打包上传数据卷
+./scripts/migrate-to-cloud.sh export <cloud-host>
+
+# 云主机（导入侧）：解包 + 生成新密钥 + 启动 + 健康检查 + Caddy 片段
+HUB_DOMAIN=model-hub.example.com ./scripts/migrate-to-cloud.sh import --generate-keys
+```
+
+环境变量：`SSH_KEY`（指定私钥）、`HUB_DOMAIN`（反代域名）、`NO_TLS=1`
+（跳过 Caddy 片段）。`--generate-keys` 会重新生成 `HUB_MASTER_KEY` 与
+`HUB_ADMIN_PASSWORD`（admin 密码从云侧 `.env.local` 抄出妥善保存）。
