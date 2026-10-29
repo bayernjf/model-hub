@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useReducer, useState } from 'react';
 import {
   CheckCircle2,
   Loader2,
@@ -75,6 +75,11 @@ export default function Models() {
   const [showDrawer, setShowDrawer] = useState(false);
   const [l2, setL2] = useState<Record<string, L2Result>>({});
   const [testing, setTesting] = useState<string | null>(null);
+  // model_id -> number of distinct projects assigning it. Disabling an
+  // assigned model breaks those projects' calls immediately, so the count
+  // must be visible before the toggle, not after.
+  const [assignCounts, setAssignCounts] = useState<Record<string, number>>({});
+  const [, bump] = useReducer((x: number) => x + 1, 0);
 
   const load = useCallback(async () => {
     const data = await apiJson<{ models: ModelView[] }>('/api/admin/models');
@@ -90,6 +95,21 @@ export default function Models() {
     void apiJson<PresetsResponse>('/api/admin/presets').then((d) =>
       setPresets(d.presets),
     );
+    void apiJson<{
+      assignments: Array<{ project_id: string; model_id: string }>;
+    }>('/api/admin/assignments').then((d) => {
+      const projectsByModel: Record<string, Set<string>> = {};
+      for (const a of d.assignments) {
+        const set = projectsByModel[a.model_id] ?? new Set<string>();
+        set.add(a.project_id);
+        projectsByModel[a.model_id] = set;
+      }
+      const counts: Record<string, number> = {};
+      for (const [modelId, projects] of Object.entries(projectsByModel)) {
+        counts[modelId] = projects.size;
+      }
+      setAssignCounts(counts);
+    });
   }, [load]);
 
   const runL2 = useCallback(
@@ -108,13 +128,25 @@ export default function Models() {
 
   const toggleEnabled = useCallback(
     async (id: string, enabled: boolean) => {
+      if (!enabled) {
+        const assigned = assignCounts[id] ?? 0;
+        if (
+          assigned > 0 &&
+          !window.confirm(
+            `该模型已被 ${assigned} 个项目分配，停用后这些项目的调用会立即失败。确定停用？`,
+          )
+        ) {
+          bump();
+          return;
+        }
+      }
       await apiFetch(`/api/admin/models/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ enabled }),
       });
       void load();
     },
-    [load],
+    [assignCounts, load],
   );
 
   const providerName = useCallback(
@@ -169,54 +201,68 @@ export default function Models() {
               <th>模态</th>
               <th>单价</th>
               <th>启用</th>
+              <th>分配</th>
               <th>L2 状态</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((m) => (
-              <tr key={m.id}>
-                <td>{m.display_name ?? m.model}</td>
-                <td>{providerName(m.provider_id)}</td>
-                <td className="mono dim">{m.modalities.join(',')}</td>
-                <td><PriceText model={m} /></td>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={m.enabled}
-                    onChange={(e) => void toggleEnabled(m.id, e.target.checked)}
-                  />
-                </td>
-                <td><L2Badge result={l2[m.id]} /></td>
-                <td>
-                  <button
-                    className="btn"
-                    disabled={testing === m.id}
-                    onClick={() => void runL2(m.id, false)}
-                  >
-                    {testing === m.id ? (
-                      <Loader2 size={13} className="spin" />
+            {filtered.map((m) => {
+              const assigned = assignCounts[m.id] ?? 0;
+              return (
+                <tr key={m.id}>
+                  <td>{m.display_name ?? m.model}</td>
+                  <td>{providerName(m.provider_id)}</td>
+                  <td className="mono dim">{m.modalities.join(',')}</td>
+                  <td><PriceText model={m} /></td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`启用 ${m.display_name ?? m.model}`}
+                      checked={m.enabled}
+                      onChange={(e) =>
+                        void toggleEnabled(m.id, e.target.checked)
+                      }
+                    />
+                  </td>
+                  <td>
+                    {assigned > 0 ? (
+                      <span className="tag tag--warn">已分配 {assigned} 项目</span>
                     ) : (
-                      '测试'
+                      <span className="dim">—</span>
                     )}
-                  </button>
-                  {(m.modalities.includes('image') ||
-                    m.modalities.includes('video')) && (
+                  </td>
+                  <td><L2Badge result={l2[m.id]} /></td>
+                  <td>
                     <button
-                      className="btn btn--ghost"
-                      onClick={() => {
-                        if (
-                          confirm('深度测试会产生极少费用，且视频只提交一次。继续？')
-                        )
-                          void runL2(m.id, true);
-                      }}
+                      className="btn"
+                      disabled={testing === m.id}
+                      onClick={() => void runL2(m.id, false)}
                     >
-                      深度测试
+                      {testing === m.id ? (
+                        <Loader2 size={13} className="spin" />
+                      ) : (
+                        '测试'
+                      )}
                     </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+                    {(m.modalities.includes('image') ||
+                      m.modalities.includes('video')) && (
+                      <button
+                        className="btn btn--ghost"
+                        onClick={() => {
+                          if (
+                            confirm('深度测试会产生极少费用，且视频只提交一次。继续？')
+                          )
+                            void runL2(m.id, true);
+                        }}
+                      >
+                        深度测试
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
