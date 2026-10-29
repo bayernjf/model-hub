@@ -322,3 +322,28 @@ model-kit 以 alias 真实调用（不碰 URL/key/模型名）。
 队列满限制（代码链路已通）。产品侧统一用 model-kit 的 chat/embed/image/video/tts/asr，
 方言（X-Api-Key、异步轮询、非标 body、WebSocket）全由 hub 的 adapter 描述、model-kit
 执行，产品不碰 URL/key/模型名。
+
+## 2026-10-30 控制台交互加固（第六会话）
+
+UI/UX 评审定级 P0 的四条交互安全问题全部落地（仅 `apps/hub/web`，无服务端改动）：
+
+- **分配页保存护栏**（`c4f3ee0`）：整批保存是全量替换 PUT，误取消勾选会静默
+  吊销产品侧 alias。现在：工具栏常驻"未保存：新增 N · 移除 N · 修改 N"角标
+  （草稿 vs 服务端快照逐行 diff，alias/预算归一化比较，非法预算数字计为改动）；
+  存在移除时保存前 `confirm` 列出将被移除的模型名；无改动时提示"无改动"不发请求。
+- **切换项目丢弃前确认**（同上提交）：有未保存草稿时切换项目先确认，取消则
+  重挂 select 回退 DOM（`selectKey` remount）。
+- **保存反馈可辨**（同上提交）：成功 `--ok` 绿 / 失败 `--alert` 红 / 提示灰
+  （tokens 新增 `.ok-text`），容器加 `role="status"` + `aria-live="polite"；
+  修复保存失败也渲染成灰色 `.dim` 的问题。
+- **模型页停用护栏**（`5199e1b`）：拉 `GET /api/admin/assignments` 全量列表按
+  模型统计去重项目数，表格新增"分配"列（已分配 N 项目 tag）；停用已分配模型
+  前确认"这些项目的调用会立即失败"；启用 checkbox 补 `aria-label`。
+- 范围外未动：多 alias（migration 012）服务端已支持但分配页 UI 仍是一模型一
+  alias 草稿（后续任务）；P1（加载失败静默、L2 结果不持久、裸微美元输入、
+  搜索/日期过滤）未动。
+
+验证：`npm run check:all` 全绿（23 文件 / 188 用例 + Python 7 用例 + build）。
+环境注意：默认 shell Node 是 v20（Astro 7 拒跑），需前置 fnm 的 v22.23.1：
+`export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"`。
+**3 个提交待 owner 授权后 push**（c4f3ee0、5199e1b、本 handoff 提交）。
