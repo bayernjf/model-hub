@@ -4,6 +4,7 @@ import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { migrateUp } from '../src/db/migrate.js';
 import { openDatabase } from '../src/db/open.js';
+import { PersistentLoginLimiter } from '../src/login-limiter.js';
 
 function makeApp() {
   const config = loadConfig({
@@ -220,6 +221,44 @@ describe('login brute-force guard', () => {
       .prepare("SELECT ip FROM admin_audit WHERE action = 'admin.login' ORDER BY id DESC")
       .get() as { ip: string };
     expect(row.ip).toBe('203.0.113.7');
+  });
+});
+
+describe('PersistentLoginLimiter', () => {
+  function makeDb() {
+    const db = openDatabase(':memory:');
+    migrateUp(db);
+    return db;
+  }
+
+  it('shares the failure budget across limiter instances over the same DB', async () => {
+    const db = makeDb();
+    const first = new PersistentLoginLimiter(db, 3, 60_000);
+    first.allow('10.0.0.1', 1_000);
+    first.allow('10.0.0.1', 2_000);
+    // A "restart": a fresh limiter opens the same DB and still sees the hits.
+    const second = new PersistentLoginLimiter(db, 3, 60_000);
+    expect(second.remaining('10.0.0.1', 3_000)).toBe(1);
+    expect(second.allow('10.0.0.1', 3_000)).toBe(true);
+    expect(second.allow('10.0.0.1', 4_000)).toBe(false);
+  });
+
+  it('slides the window and clears on success', async () => {
+    const db = makeDb();
+    const limiter = new PersistentLoginLimiter(db, 2, 60_000);
+    limiter.allow('10.0.0.2', 1_000);
+    limiter.allow('10.0.0.2', 10_000);
+    // Both hits are inside the window, so the budget is exhausted.
+    expect(limiter.allow('10.0.0.2', 50_000)).toBe(false);
+    expect(limiter.remaining('10.0.0.2', 50_000)).toBe(0);
+    // At 70_001 the earliest hit (t=1_000) has expired; one slot is free.
+    expect(limiter.allow('10.0.0.2', 70_001)).toBe(true);
+    // At 70_100 the second hit (t=10_000) expires too; only the fresh hit
+    // from 70_001 remains, so one slot is free.
+    expect(limiter.remaining('10.0.0.2', 70_100)).toBe(1);
+    limiter.allow('10.0.0.2', 71_000);
+    limiter.clear('10.0.0.2');
+    expect(limiter.remaining('10.0.0.2', 72_000)).toBe(2);
   });
 });
 

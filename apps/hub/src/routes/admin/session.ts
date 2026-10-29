@@ -10,7 +10,7 @@ import {
 } from '../../auth/session.js';
 import { writeAudit } from '../../audit.js';
 import type { HubConfig } from '../../config.js';
-import { SlidingWindowRateLimiter } from '../../rate-limit.js';
+import { PersistentLoginLimiter } from '../../login-limiter.js';
 
 interface LoginBody {
   username?: string;
@@ -24,7 +24,9 @@ export function sessionRoutes(
   const routes = new Hono<AppEnv>();
   // Login brute-force guard: at most 10 failed attempts per 15 minutes per IP.
   // Only failures consume the budget, so a successful login is never throttled.
-  const loginLimiter = new SlidingWindowRateLimiter(10, 15 * 60_000);
+  // Persisted in login_attempts so the budget survives restarts and is shared
+  // across instances opening the same DB file.
+  const loginLimiter = new PersistentLoginLimiter(db, 10, 15 * 60_000);
 
   // Login is public; it is registered before the auth middleware.
   routes.post('/session', async (c) => {
@@ -67,6 +69,7 @@ export function sessionRoutes(
     }
 
     const token = createSessionToken(identity, config.masterKey);
+    loginLimiter.clear(ip); // a correct login lifts any earlier lockout
     writeAudit(db, {
       actor: identity.username,
       action: 'admin.login',
