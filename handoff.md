@@ -347,3 +347,30 @@ UI/UX 评审定级 P0 的四条交互安全问题全部落地（仅 `apps/hub/we
 环境注意：默认 shell Node 是 v20（Astro 7 拒跑），需前置 fnm 的 v22.23.1：
 `export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"`。
 **3 个提交待 owner 授权后 push**（c4f3ee0、5199e1b、本 handoff 提交）。
+
+## 2026-10-30 控制台 P1 + 多 alias 编辑器（第七会话）
+
+UI/UX 评审定级 P1 的四项与"分配页跟上 migration 012 多 alias 能力"全部落地，
+4 个 feature 提交（api 错误面先行，其后 costs/models/assignments 各自成提交）：
+
+- **加载失败可感知**（`22a0b88`）：`apiJson` 对非 2xx 抛 `ApiError`（原来非 401
+  错误不抛，失败会卡 loading 或渲染误导性空态）；五个 island 统一"错误横幅 +
+  重试"模式（projects/providers 在本提交，其余随各自 feature 提交落地）。
+- **成本页日期过滤**（`ae4f0e5`）：`GET /api/admin/costs` 支持 `from`/`to`
+  （含端日、YYYY-MM-DD 先校验再进 SQL），页面加日期输入 + 查询/清除。
+- **L2 测试结果持久化**（`fd8f2f4`）：migration 013 `model_test_results`
+  （append-only，按 MAX(rowid) 取每模型最新一条）；`GET /models` 返回
+  `last_tests`；badge 会话结果优先、否则回退持久化结果（tooltip 带测试时间）。
+  无 key 的探测也记 `unauthorized`。顺带修 `check-migrations.sh`（停在 008：
+  meta/login_attempts 未登记、009/012 的 ALTER/重建被误判），现 13 文件全绿。
+  模型页另加文本搜索（模型名/厂商/显示名）。
+- **分配页多 alias 编辑器**（`dc4b1fc`）：每模型可建多条 alias 条目（role/
+  alias/预算 + 移除 + "+ 添加 alias"）；保存护栏改为按归一化条目 diff
+  （编辑=移除+新增），移除确认列出"模型（alias）"；L4 健康标签按条目挂接；
+  预算输入下实时显示 ≈ USD/天。
+- 范围外未动：ops-console → hub 外链导航；产品族扩展方案中挂 hub 的三项
+  新能力（RAG / FinOps / voice-agent）；pricing 真实单价等 owner 输入项。
+
+验证：`npm run check:all` 全绿（**23 文件 / 193 用例**，+5：L2 持久化 3、
+costs 日期过滤 2）+ Python 7 用例 + build + `check:migrations` 13 文件全绿。
+**4 个提交待 owner 授权后 push**（22a0b88、ae4f0e5、fd8f2f4、dc4b1fc）。
