@@ -156,7 +156,14 @@
   （migration 011）+ `PersistentLoginLimiter`（语义与内存版一致：10 次/15 分钟/IP、
   仅失败消耗、成功登录清除），session 路由替换内存限流器。提交 `04439fa`，
   check:all 183。
-- 分支状态：本轮 2 个新提交已在本地 `feature/m7-wrapup`。
+- **ASR WebSocket 探测能力（代码，handoff 开放点 #1 待办）**：`connection-test.ts`
+  新增 `probeAsrWs`——ASR 仅 WebSocket 端点，HTTP 连接测试无法覆盖；握手级探测
+  带 X-Api-Key/X-Api-Resource-Id/X-Api-Request-Id/X-Api-Connect-Id/X-Api-Sequence
+  头，open 即认证+路由+resource id 通过，**不发音频、不产生按秒计费**；audio 模态
+  按 submit_path 含 `/sauc/` 路由到 WS（ASR）vs HTTP（TTS）。hub 新增 `ws` 依赖。
+  提交 `7338606`，check:all 186。
+- 分支状态：本轮 3 个新提交（`6e2bb25`/`04439fa`/`7338606`）在本地
+  `feature/m7-wrapup`。
 
 ## 开放点
 
