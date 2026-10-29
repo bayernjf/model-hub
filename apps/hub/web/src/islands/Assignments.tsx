@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Save } from 'lucide-react';
 import { apiFetch, apiJson } from './api';
 import type {
@@ -48,6 +48,54 @@ function emptyDraft(): Draft {
   return { checked: false, role: 'primary', alias: '', budget: '' };
 }
 
+// Micro-dollar budget as typed; '' means unset, NaN marks malformed input so
+// it still counts as a pending change instead of silently matching.
+function budgetVal(s: string): number | null {
+  const t = s.trim();
+  if (t === '') return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : Number.NaN;
+}
+
+function sameDraft(a: Draft, b: Draft): boolean {
+  return (
+    a.checked === b.checked &&
+    a.role === b.role &&
+    a.alias.trim() === b.alias.trim() &&
+    budgetVal(a.budget) === budgetVal(b.budget)
+  );
+}
+
+interface DraftDiff {
+  added: string[];
+  removed: string[];
+  changed: string[];
+}
+
+// Drafts vs the server state of the active project; entries carry model
+// display names for direct use in the dirty badge and confirm dialogs.
+// Unchecking an assigned model is a removal: the PUT below replaces the
+// project's whole assignment set, so saving without a guard would revoke
+// the alias on the product side.
+function computeDiff(
+  drafts: Record<string, Draft>,
+  saved: Record<string, Draft>,
+  models: ModelView[],
+): DraftDiff {
+  const diff: DraftDiff = { added: [], removed: [], changed: [] };
+  for (const m of models) {
+    const d = drafts[m.id] ?? emptyDraft();
+    const s = saved[m.id] ?? emptyDraft();
+    const name = m.display_name ?? m.model;
+    if (d.checked && !s.checked) diff.added.push(name);
+    else if (!d.checked && s.checked) diff.removed.push(name);
+    else if (d.checked && s.checked && !sameDraft(d, s)) diff.changed.push(name);
+  }
+  return diff;
+}
+
+type SaveMessage = { kind: 'ok' | 'error' | 'info'; text: string };
+
 export default function Assignments() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [models, setModels] = useState<ModelView[]>([]);
@@ -56,7 +104,11 @@ export default function Assignments() {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<SaveMessage | null>(null);
+  const [saved, setSaved] = useState<Record<string, Draft>>({});
+  // Remount handle for the project select: bumping it reverts the DOM select
+  // to the active project after a cancelled switch.
+  const [selectKey, setSelectKey] = useState(0);
   const [health, setHealth] = useState<HealthSummary[]>([]);
   const [revision, setRevision] = useState<number>(1);
   const [assignmentIdByModel, setAssignmentIdByModel] = useState<
@@ -109,6 +161,7 @@ export default function Assignments() {
           : emptyDraft();
       }
       setDrafts(next);
+      setSaved(next);
 
       const healthData = await apiJson<{ health_checks: HealthSummary[] }>(
         `/api/admin/health-checks?project=${projectId}`,
@@ -141,17 +194,56 @@ export default function Assignments() {
     updateDraft(modelId, { checked });
   };
 
+  const diff = useMemo(
+    () => computeDiff(drafts, saved, models),
+    [drafts, saved, models],
+  );
+  const dirtyCount =
+    diff.added.length + diff.removed.length + diff.changed.length;
+
+  const onProjectChange = (next: string) => {
+    if (next === activeProject) return;
+    if (!loading && dirtyCount > 0) {
+      const ok = window.confirm(
+        `当前项目有未保存的修改（新增 ${diff.added.length} · 移除 ${diff.removed.length} · 修改 ${diff.changed.length}），切换将丢弃。继续？`,
+      );
+      if (!ok) {
+        setSelectKey((k) => k + 1);
+        return;
+      }
+    }
+    setMessage(null);
+    setActiveProject(next);
+  };
+
   const save = useCallback(async () => {
+    const d = computeDiff(drafts, saved, models);
+    if (d.added.length + d.removed.length + d.changed.length === 0) {
+      setMessage({ kind: 'info', text: '无改动' });
+      return;
+    }
+    if (
+      d.removed.length > 0 &&
+      !window.confirm(
+        `将移除 ${d.removed.length} 个已分配模型，产品侧会立即失去这些 alias：\n${d.removed.join('、')}\n\n确定保存？`,
+      )
+    ) {
+      return;
+    }
     setSaving(true);
     setMessage(null);
     const assignments = Object.entries(drafts)
-      .filter(([, d]) => d.checked)
-      .map(([model_id, d]) => ({
-        model_id,
-        role: d.role,
-        alias: d.alias.trim() ? d.alias.trim() : null,
-        daily_budget_micros: d.budget ? Number(d.budget) : null,
-      }));
+      .filter(([, draft]) => draft.checked)
+      .map(([model_id, draft]) => {
+        const budget = budgetVal(draft.budget);
+        return {
+          model_id,
+          role: draft.role,
+          alias: draft.alias.trim() ? draft.alias.trim() : null,
+          daily_budget_micros:
+            budget === null || Number.isNaN(budget) ? null : budget,
+        };
+      });
     const res = await apiFetch('/api/admin/assignments', {
       method: 'PUT',
       body: JSON.stringify({
@@ -161,15 +253,18 @@ export default function Assignments() {
     });
     setSaving(false);
     if (res.ok) {
-      setMessage('已保存');
+      setMessage({
+        kind: 'ok',
+        text: `已保存（新增 ${d.added.length} · 移除 ${d.removed.length} · 修改 ${d.changed.length}）`,
+      });
       void loadAssignments(activeProject);
     } else {
       const data = (await res.json().catch(() => ({}))) as {
         error?: { message?: string };
       };
-      setMessage(data.error?.message ?? '保存失败');
+      setMessage({ kind: 'error', text: data.error?.message ?? '保存失败' });
     }
-  }, [drafts, activeProject, loadAssignments]);
+  }, [drafts, saved, models, activeProject, loadAssignments]);
 
   const providerName = useCallback(
     (providerId: string) =>
@@ -185,13 +280,20 @@ export default function Assignments() {
     <div className="stack">
       <div className="toolbar">
         <select
+          key={selectKey}
           value={activeProject}
-          onChange={(e) => setActiveProject(e.target.value)}
+          onChange={(e) => onProjectChange(e.target.value)}
         >
           {projects.map((p) => (
             <option key={p.id} value={p.id}>{p.slug}</option>
           ))}
         </select>
+        {!loading && dirtyCount > 0 && (
+          <span className="tag tag--warn">
+            未保存：新增 {diff.added.length} · 移除 {diff.removed.length} · 修改{' '}
+            {diff.changed.length}
+          </span>
+        )}
         <button
           className="btn btn--primary"
           disabled={saving || loading}
@@ -202,7 +304,21 @@ export default function Assignments() {
         </button>
       </div>
 
-      {message && <div className="dim">{message}</div>}
+      {message && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={
+            message.kind === 'ok'
+              ? 'ok-text'
+              : message.kind === 'error'
+                ? 'error'
+                : 'dim'
+          }
+        >
+          {message.text}
+        </div>
+      )}
 
       <div className="dashboard-bar">
         <span>当前 revision：<b className="mono">{revision}</b></span>
