@@ -137,6 +137,27 @@
   环境问题（Node 26），stash 基线同现，与本次改动无关。
 - loom：venv pytest，hub/content/registry 208 passed。
 
+## 2026-10-29 推进轮（第三会话，owner 授权「把能推进的搞了」）
+
+- **TTS 端到端真实回归已完成并固化音色**：用生产库 OpenSpeech key（复用 Ark Plan key，
+  信封解密进程内、未落日志）走真实 `synthesize` 驱动合成：`http=200`、1174ms、MP3
+  `ID3` 头 32493 字节，ffprobe 确认 `mp3 / 4.06s / 64kbps`。过程中修正了请求体事实：
+  TTS 是 **X-Api-Key 单头 + `X-Api-Resource-Id: seed-tts-2.0` + `req_params` 包装
+  （`{text, speaker, audio_params}`）**——不带 resource-id 报 45000030、text 不在
+  req_params 报 45000000「text and ssml are both empty」。preset 已固化音色
+  `zh_female_vv_uranus_bigtts`。
+- **视频 Agnes deep 复测**：`video_queue_full` 仍在（平台队列未恢复，任务被拒未计费）；
+  提交 body 方言已确认走 adapter（create_body/seconds_field）。待平台恢复后再复测。
+- **TTS probe 方言适配（代码）**：`connection-test.ts` 新增 `probeTts`（x-api-key +
+  X-Api-Resource-Id + req_params 方言，解析 chunked JSON 的 `code`/base64 data；Bearer
+  方言兼容 OpenAI TTS），`testModel` 增加 audio 模态分支，`testProvider` 对 voice-only
+  provider 回退到 TTS 探测。提交 `6e2bb25`，check:all 181。
+- **登录失败限流持久化（代码，handoff 可选项 #7）**：新增 `login_attempts` 表
+  （migration 011）+ `PersistentLoginLimiter`（语义与内存版一致：10 次/15 分钟/IP、
+  仅失败消耗、成功登录清除），session 路由替换内存限流器。提交 `04439fa`，
+  check:all 183。
+- 分支状态：本轮 2 个新提交已在本地 `feature/m7-wrapup`。
+
 ## 开放点
 
 1. 视频/语音模型接入（部分受阻，多为非代码问题）：
@@ -198,11 +219,17 @@
    provider 已登记**（`prov_4cc7051090a4168fb0139d4e94f1f508`，复用 Ark Plan key，
    写库后双流冒烟通过）。
 4. TTS 真实联调：HTTP 已真实合成过 MP3，可再补一次端到端回归并固化音色。
+   ~~（待办）~~ **已完成（2026-10-29）**：真实 `synthesize` 驱动回归通过（4.06s MP3，
+   音色 `zh_female_vv_uranus_bigtts` 固化在 preset）。
 5. 视频 Agnes 真实生成复测：队列曾满（video_queue_full），待平台恢复后 deep 复测；
    probeVideoSubmit 已按方言适配（create_body/seconds_field/omit_duration）。
+   ~~（待办）~~ **2026-10-29 复测：队列仍满**，任务被拒未计费；方言 body 已实测正确，
+   待平台恢复后再次 deep 复测。
 6. ZEUS_DECISION_*（Jev 决策模型）在 hub 注册模型条目（若 Jev 也迁 hub）；
    受阻于 Jev base URL/key，且其 /decide 为非标准方言，需另立 provider。
-7. （可选）登录失败计数持久化到 DB，支持多实例共享限流（当前为进程内内存）。
+7. ~~（可选）登录失败计数持久化到 DB，支持多实例共享限流（当前为进程内内存）。~~
+   **已完成（2026-10-29）**：migration 011 + `PersistentLoginLimiter`，限流预算
+   重启不丢、共享 DB 的多实例共享同一预算。
 
 已在本轮推进：~~admin 端点补进 OpenAPI 契约~~（新增 `contracts/admin-openapi.yaml`，
 18 paths / 29 operations，已交叉引用）。
