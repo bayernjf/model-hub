@@ -412,9 +412,10 @@ export const PRESET_CATALOG: PresetCatalog = {
           modalities: ['audio'],
           supports_json: false,
           supports_stream: false,
-          // Real per-character price not yet confirmed; owner must fill before
-          // billing. HTTP path verified 2026-10-29 (real MP3 synthesis).
-          pricing: {},
+          // 火山引擎官方公开价：豆包语音合成 5 元/万字符（= 0.5 元/千字符）。
+          // 来源：volcengine.com/product/doubao（2026-10-29 抓取）；汇率沿用
+          // 文件头声明的 1 USD = 6.666 CNY → $0.075/kilo_char。
+          pricing: { per_kilo_char: 0.075 },
           endpoints: { audio: '/api/v3/plan/tts/unidirectional' },
           adapter: {
             auth_style: 'x-api-key',
@@ -434,11 +435,10 @@ export const PRESET_CATALOG: PresetCatalog = {
           modalities: ['audio'],
           supports_json: false,
           supports_stream: false,
-          // Real per-second price not yet confirmed; owner must fill before
-          // billing. Path + auth verified live 2026-10-29 (plan key on
-          // openspeech.bytedance.com, WAV 16k mono in, transcript + utterances
-          // out). See handoff.md for the three wire fixes it exposed.
-          pricing: {},
+          // 火山引擎官方公开价：豆包流式语音识别 4.5 元/小时（按语音时长计费）。
+          // 来源：ai.volcengine.com/model + volcengine.com/product/doubao
+          // （2026-10-29 抓取）；汇率沿用 1 USD = 6.666 CNY → $0.0001875/second。
+          pricing: { per_second: 0.0001875 },
           adapter: {
             auth_style: 'x-api-key',
             resource_id: 'volc.seedasr.sauc.duration',
@@ -453,10 +453,9 @@ export const PRESET_CATALOG: PresetCatalog = {
           modalities: ['audio'],
           supports_json: false,
           supports_stream: false,
-          // Real per-second price not yet confirmed; owner must fill before
-          // billing. Path + auth verified live 2026-10-29 (same run as the
-          // dual-stream model).
-          pricing: {},
+          // 与 seed-asr-2-async 同价：4.5 元/小时 → $0.0001875/second。
+          // 来源同上（火山引擎公开价，2026-10-29）。
+          pricing: { per_second: 0.0001875 },
           adapter: {
             auth_style: 'x-api-key',
             resource_id: 'volc.seedasr.sauc.duration',
