@@ -194,4 +194,46 @@ describe('cost dashboard', () => {
     expect(data.totals.builtin.calls).toBe(0);
     expect(data.totals.byok.calls).toBe(0);
   });
+
+  it('filters by inclusive from/to date bounds', async () => {
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 1000,
+      output_tokens: 500,
+      reasoning_tokens: 0,
+      ts: '2026-10-26T10:00:00.000Z',
+    });
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 2000,
+      output_tokens: 1000,
+      reasoning_tokens: 0,
+      ts: '2026-10-28T10:00:00.000Z',
+    });
+
+    const res = await s.t.app.request(
+      '/api/admin/costs?from=2026-10-27&to=2026-10-28',
+      { headers: { Cookie: s.cookie } },
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      totals: { builtin: { calls: number } };
+      by_day: Array<{ day: string }>;
+    };
+    expect(data.totals.builtin.calls).toBe(1);
+    expect(data.by_day.map((r) => r.day)).toEqual(['2026-10-28']);
+  });
+
+  it('rejects malformed date bounds', async () => {
+    const res = await s.t.app.request('/api/admin/costs?from=not-a-date', {
+      headers: { Cookie: s.cookie },
+    });
+    expect(res.status).toBe(400);
+    const data = (await res.json()) as { error: { code: string } };
+    expect(data.error.code).toBe('validation_error');
+  });
 });

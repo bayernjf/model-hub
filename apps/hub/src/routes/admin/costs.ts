@@ -52,6 +52,8 @@ function addTo(cell: CostCell, row: CostAggregateRow, withCost: boolean): void {
   if (withCost) cell.cost_micros += row.cost_micros;
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function adminCostRoutes(
   config: HubConfig,
   usageRepo: UsageRepository,
@@ -60,7 +62,17 @@ export function adminCostRoutes(
   routes.use('*', requireAdmin(config));
 
   routes.get('/costs', (c) => {
-    const rows = usageRepo.aggregate();
+    // Optional inclusive dashboard window; bounds are plain dates, validated
+    // before they ever reach SQL.
+    const from = c.req.query('from');
+    const to = c.req.query('to');
+    if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) {
+      return c.json(
+        { error: { code: 'validation_error', message: 'from/to must be YYYY-MM-DD' } },
+        400,
+      );
+    }
+    const rows = usageRepo.aggregate(from, to);
 
     const byProject = new Map<string, SourceSplit>();
     const byModel = new Map<string, SourceSplit>();

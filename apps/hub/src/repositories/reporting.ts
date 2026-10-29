@@ -156,24 +156,36 @@ export class UsageRepository {
   // Raw aggregation for the read-only cost dashboard (W7-4). Groups by project
   // slug × billing_source × day × model. byok rows carry no cost (owner does
   // not pay for user keys); their volume is still summed for display.
-  aggregate(): CostAggregateRow[] {
+  // Optional inclusive date bounds (YYYY-MM-DD) narrow the dashboard window.
+  aggregate(from?: string, to?: string): CostAggregateRow[] {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (from) {
+      where.push('date(u.ts) >= ?');
+      params.push(from);
+    }
+    if (to) {
+      where.push('date(u.ts) <= ?');
+      params.push(to);
+    }
+    const sql = `
+      SELECT p.slug AS project,
+             u.billing_source AS billing_source,
+             date(u.ts) AS day,
+             u.model AS model,
+             COUNT(*) AS calls,
+             COALESCE(SUM(u.input_tokens), 0) AS input_tokens,
+             COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
+             COALESCE(SUM(u.quantity), 0) AS quantity,
+             COALESCE(SUM(u.cost_micros), 0) AS cost_micros
+       FROM usage_events u
+       JOIN projects p ON p.id = u.project_id
+       ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+       GROUP BY p.slug, u.billing_source, date(u.ts), u.model
+       ORDER BY day DESC, project ASC, model ASC`;
     return this.db
-      .prepare(
-        `SELECT p.slug AS project,
-                u.billing_source AS billing_source,
-                date(u.ts) AS day,
-                u.model AS model,
-                COUNT(*) AS calls,
-                COALESCE(SUM(u.input_tokens), 0) AS input_tokens,
-                COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
-                COALESCE(SUM(u.quantity), 0) AS quantity,
-                COALESCE(SUM(u.cost_micros), 0) AS cost_micros
-         FROM usage_events u
-         JOIN projects p ON p.id = u.project_id
-         GROUP BY p.slug, u.billing_source, date(u.ts), u.model
-         ORDER BY day DESC, project ASC, model ASC`,
-      )
-      .all() as unknown as CostAggregateRow[];
+      .prepare(sql)
+      .all(...(params as never[])) as unknown as CostAggregateRow[];
   }
 }
 

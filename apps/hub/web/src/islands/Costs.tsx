@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { apiJson } from './api';
+import { useCallback, useEffect, useState } from 'react';
+import { apiJson, errorText } from './api';
 
 interface CostCell {
   calls: number;
@@ -41,18 +41,82 @@ function Row({ split }: { split: SourceSplit }) {
 export default function Costs() {
   const [data, setData] = useState<CostsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+
+  const load = useCallback(async (fromDate: string, toDate: string) => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const params = new URLSearchParams();
+      if (fromDate) params.set('from', fromDate);
+      if (toDate) params.set('to', toDate);
+      const qs = params.toString();
+      setData(
+        await apiJson<CostsResponse>(
+          `/api/admin/costs${qs ? `?${qs}` : ''}`,
+        ),
+      );
+    } catch (err) {
+      setLoadError(errorText(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    apiJson<CostsResponse>('/api/admin/costs')
-      .then(setData)
-      .finally(() => setLoading(false));
-  }, []);
+    void load('', '');
+  }, [load]);
+
+  if (loadError) {
+    return (
+      <div className="panel stack">
+        <p className="error">加载失败：{loadError}</p>
+        <div>
+          <button className="btn" onClick={() => void load(from, to)}>
+            重试
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) return <p>加载中…</p>;
   if (!data) return <p>无数据。</p>;
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
+      <div className="toolbar">
+        <div className="filters">
+          <input
+            type="date"
+            aria-label="开始日期"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+          <input
+            type="date"
+            aria-label="结束日期"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
+          <button className="btn btn--primary" onClick={() => void load(from, to)}>
+            查询
+          </button>
+          <button
+            className="btn btn--ghost"
+            onClick={() => {
+              setFrom('');
+              setTo('');
+              void load('', '');
+            }}
+          >
+            清除
+          </button>
+        </div>
+      </div>
+
       <section>
         <h2>总计</h2>
         <table>
