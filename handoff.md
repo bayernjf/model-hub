@@ -240,3 +240,24 @@
 
 已在本轮推进：~~admin 端点补进 OpenAPI 契约~~（新增 `contracts/admin-openapi.yaml`，
 18 paths / 29 operations，已交叉引用）。
+
+## 2026-10-29 推进轮（第四会话，owner 授权「把剩余的给搞了」）
+
+- **pricing 真实价格已填（handoff 后续任务 #1 解除受阻）**：火山引擎官方公开价
+  抓取（2026-10-29）——豆包语音合成 5 元/万字符（0.5 元/千字符 → $0.075/kilo_char）、
+  豆包流式语音识别 4.5 元/小时（→ $0.0001875/second）。来源：
+  volcengine.com/product/doubao + ai.volcengine.com/model；汇率沿用 catalog
+  声明的 1 USD = 6.666 CNY。提交 `37625b2`，hub typecheck 0 错、catalog 相关
+  测试 34/34 绿。订阅制（ark-code）与视频（Agnes $0.025/秒、限时 $0/秒，
+  docs/video-integration.md 已记录）维持原状。
+- **model_overlays 4 行 enabled=0 判定为预期状态**：4 个模型（ark-code-latest /
+  seedream-5.0-flash / embedding-vision / agnes-video-2.5-flash）均为登记未启用
+  （preset_model_id=null、enabled=0，projection 三层全 enabled 才投给项目），
+  assignments 表为空、无项目引用。安全默认，无需改动。
+- **视频 Agnes 再复测：队列仍满**（`video_queue_full`，HTTP 503，request id
+  2026102909010921722638a12F34JW，未计费）。平台限制未恢复，维持受阻。
+- **云迁移脚本化（handoff 后续任务 #2 准备完毕）**：新增
+  `scripts/migrate-to-cloud.sh`（export/import 两阶段幂等脚本：镜像 save/load、
+  数据卷 pack/unpack、云侧重新生成密钥、compose up、健康检查、Caddy 片段），
+  DEPLOYMENT.md §云服务器迁移补「一键脚本」小节。提交 `0904acb`。
+  执行仍待 owner 确认云服务器资源与时间。
