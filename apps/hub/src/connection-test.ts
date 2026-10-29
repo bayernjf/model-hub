@@ -242,6 +242,101 @@ async function probeModelsList(
   }
 }
 
+// Minimal TTS probe. Doubao voice (openspeech) uses X-Api-Key single-header
+// auth, an X-Api-Resource-Id header and a non-standard req_params body whose
+// response is chunked JSON with base64 `data` fields; OpenAI-compatible TTS
+// uses Bearer auth and returns JSON (url) or raw audio. The adapter carries
+// auth_style / resource_id / submit_path / create_body (speaker, ...).
+async function probeTts(
+  baseUrl: string,
+  apiKey: string,
+  model: ModelView,
+  timeoutMs: number,
+  fetchImpl: FetchLike,
+): Promise<TestResult> {
+  const a = model.adapter;
+  const path =
+    a?.submit_path ??
+    model.endpoints_override?.audio ??
+    '/v1/audio/speech';
+  const xApiKey = a?.auth_style === 'x-api-key';
+  const start = Date.now();
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (xApiKey) {
+      headers['X-Api-Key'] = apiKey;
+      if (a?.resource_id) headers['X-Api-Resource-Id'] = a.resource_id;
+    } else {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    const createBody = a?.create_body ?? {};
+    const body = xApiKey
+      ? { req_params: { text: 'hi', ...createBody } }
+      : { model: model.model, input: 'hi', ...createBody };
+    const res = await fetchImpl(joinUrl(baseUrl, path), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const latency = Date.now() - start;
+    if (!res.ok) {
+      return {
+        ok: false,
+        latency_ms: latency,
+        scope: 'model',
+        error: {
+          code: classifyStatus(res.status),
+          detail: await safeText(res),
+        },
+      };
+    }
+    const text = await res.text();
+    if (xApiKey) {
+      // Semantic errors arrive as HTTP 200 with a non-zero code.
+      const codeMatch = /"code"\s*:\s*(\d+)/.exec(text);
+      if (codeMatch && codeMatch[1] !== '0') {
+        return {
+          ok: false,
+          latency_ms: latency,
+          scope: 'model',
+          error: {
+            code: 'dialect_mismatch',
+            detail: text.slice(0, 300),
+            hint: '语音端点返回语义错误，检查 resource_id / body 方言',
+          },
+        };
+      }
+      const parts: string[] = [];
+      const re = /"data"\s*:\s*"([A-Za-z0-9+/=]+)"/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text)) !== null) parts.push(m[1]!);
+      if (parts.length === 0) {
+        return {
+          ok: false,
+          latency_ms: latency,
+          scope: 'model',
+          error: { code: 'dialect_mismatch', hint: '响应缺少 base64 音频块' },
+        };
+      }
+      return { ok: true, latency_ms: latency, scope: 'model' };
+    }
+    // Bearer dialect: a 200 is accepted regardless of body shape (JSON url or
+    // raw audio); a JSON error object with no audio/url is still accepted as a
+    // provider-level success for OpenAI-style TTS.
+    return { ok: true, latency_ms: latency, scope: 'model' };
+  } catch (err) {
+    return {
+      ok: false,
+      latency_ms: Date.now() - start,
+      scope: 'model',
+      error: { code: classifyFetchError(err) },
+    };
+  }
+}
+
 export interface ProviderTestInput {
   base_url: string;
   api_key: string;
@@ -295,6 +390,44 @@ export async function testProvider(
         reasoning,
         timeoutMs: TEST_TIMEOUT_MS,
       },
+      fetchImpl,
+    );
+  }
+
+  // Voice-only provider (e.g. openspeech): synthesize a minimal clip as the
+  // auth/connectivity probe when an audio model is known.
+  const importedAudio = input.models?.find((m) => hasModality(m, 'audio'));
+  const presetAudio = preset?.models.find((m) =>
+    m.modalities.includes('audio'),
+  );
+  const audioModel = importedAudio ?? presetAudio;
+  if (audioModel) {
+    const modelView: ModelView = {
+      id: audioModel.id,
+      provider_id: 'preset',
+      preset_model_id: audioModel.id,
+      model: audioModel.model,
+      display_name: audioModel.display_name ?? null,
+      modalities: audioModel.modalities,
+      litellm_id: audioModel.litellm_id ?? null,
+      context_window: audioModel.context_window ?? null,
+      supports_json: audioModel.supports_json,
+      supports_stream: audioModel.supports_stream,
+      pricing: audioModel.pricing ?? {},
+      endpoints_override: null,
+      adapter: audioModel.adapter ?? null,
+      is_default: false,
+      sort_order: 0,
+      enabled: true,
+      reasoning: audioModel.reasoning ?? false,
+      created_at: '',
+      updated_at: '',
+    };
+    return probeTts(
+      input.base_url,
+      input.api_key,
+      modelView,
+      TEST_TIMEOUT_MS,
       fetchImpl,
     );
   }
@@ -469,6 +602,16 @@ export async function testModel(
       input.api_key,
       model.model,
       TEST_TIMEOUT_MS,
+      fetchImpl,
+    );
+  }
+
+  if (model.modalities.includes('audio')) {
+    return probeTts(
+      input.base_url,
+      input.api_key,
+      model,
+      GENERATION_TIMEOUT_MS,
       fetchImpl,
     );
   }

@@ -300,4 +300,107 @@ describe('testModel (L2)', () => {
     expect(result.ok).toBe(true);
     expect(spy).toHaveBeenCalledOnce();
   });
+
+  it('synthesizes audio via the x-api-key dialect (openspeech)', async () => {
+    const model = makeModel({
+      modalities: ['audio'],
+      model: 'seed-tts-2.0',
+      adapter: {
+        auth_style: 'x-api-key',
+        resource_id: 'seed-tts-2.0',
+        submit_path: '/api/v3/plan/tts/unidirectional',
+        create_body: {
+          speaker: 'zh_female_vv_uranus_bigtts',
+          audio_params: { format: 'mp3', sample_rate: 24000 },
+        },
+      },
+    });
+    let capturedHeaders: Record<string, string> = {};
+    let capturedBody = '';
+    const spy: FetchLike = async (_url, init) => {
+      capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
+      capturedBody = String(init?.body);
+      return jsonResponse(200, {
+        code: 0,
+        data: Buffer.from('fake-mp3').toString('base64'),
+      });
+    };
+    const result = await testModel(modelTestInput(model), spy);
+    expect(result.ok).toBe(true);
+    expect(capturedHeaders['X-Api-Key']).toBe('sk-test');
+    expect(capturedHeaders['X-Api-Resource-Id']).toBe('seed-tts-2.0');
+    expect(capturedHeaders.Authorization).toBeUndefined();
+    const parsed = JSON.parse(capturedBody) as {
+      req_params: { text: string; speaker: string };
+    };
+    expect(parsed.req_params.text).toBe('hi');
+    expect(parsed.req_params.speaker).toBe('zh_female_vv_uranus_bigtts');
+  });
+
+  it('flags openspeech semantic errors as dialect_mismatch', async () => {
+    const model = makeModel({
+      modalities: ['audio'],
+      model: 'seed-tts-2.0',
+      adapter: {
+        auth_style: 'x-api-key',
+        resource_id: 'seed-tts-2.0',
+        submit_path: '/api/v3/plan/tts/unidirectional',
+      },
+    });
+    const spy: FetchLike = () =>
+      Promise.resolve(
+        jsonResponse(200, { code: 45000000, message: 'bad params' }),
+      );
+    const result = await testModel(modelTestInput(model), spy);
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('dialect_mismatch');
+  });
+
+  it('uses the bearer dialect for openai-compatible TTS', async () => {
+    const model = makeModel({
+      modalities: ['audio'],
+      model: 'gpt-4o-mini-tts',
+      endpoints_override: { audio: '/audio/speech' },
+    });
+    let capturedHeaders: Record<string, string> = {};
+    let capturedBody = '';
+    const spy: FetchLike = async (_url, init) => {
+      capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
+      capturedBody = String(init?.body);
+      return new Response('raw-audio-bytes', { status: 200 });
+    };
+    const result = await testModel(modelTestInput(model), spy);
+    expect(result.ok).toBe(true);
+    expect(capturedHeaders.Authorization).toBe('Bearer sk-test');
+    const parsed = JSON.parse(capturedBody) as {
+      model: string;
+      input: string;
+    };
+    expect(parsed.model).toBe('gpt-4o-mini-tts');
+    expect(parsed.input).toBe('hi');
+  });
+
+  it('falls back to a TTS probe for a voice-only provider', async () => {
+    let capturedHeaders: Record<string, string> = {};
+    const spy: FetchLike = async (_url, init) => {
+      capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
+      return jsonResponse(200, {
+        code: 0,
+        data: Buffer.from('fake-mp3').toString('base64'),
+      });
+    };
+    const result = await testProvider(
+      {
+        base_url: 'https://openspeech.bytedance.com',
+        api_key: 'sk-test',
+        protocol: 'openai-compatible',
+        billing_type: 'payg',
+        preset_id: 'openspeech',
+      },
+      spy,
+    );
+    expect(result.ok).toBe(true);
+    expect(capturedHeaders['X-Api-Key']).toBe('sk-test');
+    expect(capturedHeaders['X-Api-Resource-Id']).toBe('seed-tts-2.0');
+  });
 });
