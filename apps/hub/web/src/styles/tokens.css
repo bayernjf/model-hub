@@ -157,3 +157,5 @@ input, select, textarea {
 .mini-field { display: flex; flex-direction: column; gap: 4px; }
 .mini-field span { font-size: 11px; color: var(--ink-faint); }
 .mini-field input, .mini-field select { padding: 6px 8px; font-size: 12px; }
+.mini-hint { font-size: 11px; color: var(--ink-faint); }
+.add-alias { margin: 8px 0 0 26px; }
