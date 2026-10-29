@@ -100,8 +100,16 @@ export function modelRoutes(
     const provider = providerRepo.get(model.provider_id);
     if (!provider) return c.json({ error: { code: 'not_found' } }, 404);
 
+    const deep = c.req.query('deep') === 'true';
     const apiKey = providerRepo.revealKey(provider.id);
     if (!apiKey) {
+      repo.recordTestResult({
+        model_id: modelId,
+        deep,
+        ok: false,
+        latency_ms: 0,
+        error_code: 'unauthorized',
+      });
       return c.json({
         ok: false,
         latency_ms: 0,
@@ -110,13 +118,19 @@ export function modelRoutes(
       });
     }
 
-    const deep = c.req.query('deep') === 'true';
     const result = await testModel({
       base_url: provider.base_url,
       api_key: apiKey,
       billing_type: provider.billing_type,
       model,
       deep,
+    });
+    repo.recordTestResult({
+      model_id: modelId,
+      deep,
+      ok: result.ok,
+      latency_ms: result.latency_ms,
+      error_code: result.error?.code ?? null,
     });
 
     writeAudit(db, {
@@ -145,8 +159,11 @@ export function modelRoutes(
     c.json({ models: repo.listByProvider(c.req.param('id')) }),
   );
 
-  // All models across providers (model page).
-  routes.get('/models', (c) => c.json({ models: repo.listAll() }));
+  // All models across providers (model page), with the newest persisted L2
+  // test per model so badges survive a reload.
+  routes.get('/models', (c) =>
+    c.json({ models: repo.listAll(), last_tests: repo.latestTestResults() }),
+  );
 
   // Batch-import preset models (disabled by default).
   routes.post(

@@ -304,3 +304,103 @@ describe('L1 provider test route', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('L2 model test persistence', () => {
+  let t: TestApp;
+  let cookie: string;
+
+  beforeEach(async () => {
+    t = makeTestApp();
+    cookie = await login(t.app);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function importModel(apiKey?: string): Promise<string> {
+    const pid = await createProvider(
+      t.app,
+      cookie,
+      apiKey === undefined ? {} : { api_key: apiKey },
+    );
+    const res = await t.app.request(
+      `/api/admin/providers/${pid}/models/import`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          preset_provider_id: 'ark',
+          model_ids: ['doubao-seed-1-6'],
+        }),
+      },
+    );
+    return (
+      (await res.json()) as { imported: Array<{ id: string }> }
+    ).imported[0]?.id ?? '';
+  }
+
+  async function lastTests(): Promise<
+    Record<string, { ok: boolean; error_code: string | null }>
+  > {
+    const res = await t.app.request('/api/admin/models', {
+      headers: { Cookie: cookie },
+    });
+    return ((await res.json()) as { last_tests: Record<string, never> })
+      .last_tests;
+  }
+
+  it('records a failed probe and surfaces it on GET /models', async () => {
+    const id = await importModel('sk-real');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{"error":{"code":"boom"}}', { status: 500 })),
+    );
+    const res = await t.app.request(`/api/admin/models/${id}/test`, {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
+
+    const tests = await lastTests();
+    expect(tests[id]?.ok).toBe(false);
+    expect(tests[id]?.error_code).toBeTruthy();
+  });
+
+  it('records a successful probe', async () => {
+    const id = await importModel('sk-real');
+    // L2 compares the model echo against the configured model string, so the
+    // stub echoes back whatever the probe sent.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: unknown, init?: { body?: string }) => {
+        const body = JSON.parse(init?.body ?? '{}') as { model?: string };
+        return new Response(
+          JSON.stringify({ choices: [{}], model: body.model ?? 'auto' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }),
+    );
+    const res = await t.app.request(`/api/admin/models/${id}/test`, {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
+
+    const tests = await lastTests();
+    expect(tests[id]?.ok).toBe(true);
+    expect(tests[id]?.error_code).toBeNull();
+  });
+
+  it('records unauthorized when the provider has no key', async () => {
+    const id = await importModel();
+    const res = await t.app.request(`/api/admin/models/${id}/test`, {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
+
+    const tests = await lastTests();
+    expect(tests[id]?.error_code).toBe('unauthorized');
+  });
+});

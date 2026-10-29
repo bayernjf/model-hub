@@ -16,6 +16,16 @@ expected_tables=(
   usage_events
   health_checks
   admin_audit
+  meta
+  login_attempts
+  model_test_results
+)
+
+# Migrations that legitimately create no table (ALTER / table rebuild); the
+# per-file CREATE TABLE IF NOT EXISTS check below skips them.
+non_table_migrations=(
+  009_model_reasoning.sql
+  012_allow_same_model_aliases.sql
 )
 
 fail=0
@@ -35,8 +45,12 @@ while IFS= read -r file; do
   expected_number=$((expected_number + 1))
 done <<< "$files"
 
-# 2. Each file creates a table with IF NOT EXISTS.
+# 2. Each file creates a table with IF NOT EXISTS (except ALTER / rebuild
+#    migrations listed above).
 while IFS= read -r file; do
+  if printf '%s\n' "${non_table_migrations[@]}" | grep -qxF "$file"; then
+    continue
+  fi
   if ! grep -q 'CREATE TABLE IF NOT EXISTS' "$MIGRATION_DIR/$file"; then
     echo "FAIL: $file has no 'CREATE TABLE IF NOT EXISTS'"
     fail=1

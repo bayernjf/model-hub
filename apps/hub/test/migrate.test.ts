@@ -14,6 +14,7 @@ const EXPECTED_TABLES = [
   'admin_audit',
   'meta',
   'login_attempts',
+  'model_test_results',
 ];
 
 function freshDb(): DatabaseSync {
@@ -32,11 +33,11 @@ function userTableNames(db: DatabaseSync): string[] {
 }
 
 describe('SQLite migrations', () => {
-  it('creates all 8 tables on migrateUp', () => {
+  it('creates all 11 tables on migrateUp', () => {
     const db = freshDb();
     const applied = migrateUp(db);
 
-    expect(applied).toHaveLength(12);
+    expect(applied).toHaveLength(13);
     expect(userTableNames(db)).toEqual([...EXPECTED_TABLES].sort());
   });
 
@@ -53,14 +54,14 @@ describe('SQLite migrations', () => {
     const status = migrationStatus(db);
 
     expect(status.pending).toEqual([]);
-    expect(status.applied).toHaveLength(12);
+    expect(status.applied).toHaveLength(13);
   });
 
   it('reports all migrations pending on a fresh database', () => {
     const db = freshDb();
     const status = migrationStatus(db);
 
-    expect(status.pending).toHaveLength(12);
+    expect(status.pending).toHaveLength(13);
     expect(status.applied).toEqual([]);
   });
 });
