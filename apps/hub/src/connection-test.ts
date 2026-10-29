@@ -6,6 +6,9 @@
 import type { ModelView } from './repositories/models.js';
 import { getPresetProvider } from './presets/index.js';
 import type { Modality } from './presets/types.js';
+import WebSocket from 'ws';
+import type { IncomingMessage } from 'node:http';
+import type { ServerResponse } from 'node:http';
 
 export type ErrorCode =
   | 'network'
@@ -337,6 +340,114 @@ async function probeTts(
   }
 }
 
+// Minimal ASR probe over WebSocket. ASR endpoints are WebSocket-only (no HTTP
+// route), so the L1/L2 connection test performs a handshake-only check: it
+// opens the socket with the voice-dialect headers (X-Api-Key /
+// X-Api-Resource-Id / X-Api-Request-Id / X-Api-Connect-Id / X-Api-Sequence)
+// and treats a successful open as auth + route + resource-id validation.
+// No audio is sent, so no per-second billing is incurred.
+export type AsrProbeSocket = {
+  onOpen(cb: () => void): void;
+  onError(cb: (err: Error) => void): void;
+  onUnexpectedResponse?(cb: (res: { status: number }) => void): void;
+  close(): void;
+};
+
+export type AsrProbeSocketFactory = (
+  url: string,
+  handshakeHeaders: Record<string, string>,
+) => AsrProbeSocket;
+
+export const nodeAsrProbeFactory: AsrProbeSocketFactory = (
+  url,
+  headers,
+) => {
+  const ws = new WebSocket(url, { headers });
+  return {
+    onOpen: (cb) => ws.once('open', cb),
+    onError: (cb) => ws.once('error', cb),
+    onUnexpectedResponse: (cb) =>
+      ws.once(
+        'unexpected-response',
+        (_req: IncomingMessage, res: ServerResponse) =>
+          cb({ status: res.statusCode }),
+      ),
+    close: () => ws.close(),
+  };
+};
+
+function toWsUrl(baseUrl: string, path: string): string {
+  const base = baseUrl
+    .replace(/\/+$/, '')
+    .replace(/^http:/, 'ws:')
+    .replace(/^https:/, 'wss:');
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${p}`;
+}
+
+export async function probeAsrWs(
+  baseUrl: string,
+  apiKey: string,
+  model: ModelView,
+  timeoutMs: number,
+  factory: AsrProbeSocketFactory = nodeAsrProbeFactory,
+): Promise<TestResult> {
+  const a = model.adapter;
+  const path = a?.submit_path ?? '/api/v3/plan/sauc/bigmodel_async';
+  const url = toWsUrl(baseUrl, path);
+  const start = Date.now();
+  const requestId = `probe-${Date.now()}`;
+  const headers: Record<string, string> = {
+    'X-Api-Key': apiKey,
+    'X-Api-Request-Id': requestId,
+    'X-Api-Connect-Id': requestId,
+    'X-Api-Sequence': '-1',
+  };
+  if (a?.resource_id) headers['X-Api-Resource-Id'] = a.resource_id;
+
+  return await new Promise<TestResult>((resolve) => {
+    const socket = factory(url, headers);
+    let settled = false;
+    const timer = setTimeout(() => {
+      settle(false, { code: 'network', hint: 'WebSocket 握手超时' });
+    }, timeoutMs);
+
+    const settle = (
+      ok: boolean,
+      error?: { code: ErrorCode; hint?: string },
+    ): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.close();
+      resolve({
+        ok,
+        latency_ms: Date.now() - start,
+        scope: 'model',
+        ...(ok ? {} : { error: { code: error!.code, hint: error!.hint } }),
+      });
+    };
+
+    socket.onOpen(() => settle(true));
+    socket.onError(() =>
+      settle(false, { code: 'network', hint: 'WebSocket 连接失败' }),
+    );
+    socket.onUnexpectedResponse?.((res) => {
+      const code =
+        res.status === 401
+          ? 'unauthorized'
+          : res.status === 403
+            ? 'forbidden'
+            : res.status === 404
+              ? 'model_not_found'
+              : res.status === 429
+                ? 'rate_limited'
+                : 'server_error';
+      settle(false, { code, hint: `WebSocket 升级被拒 (HTTP ${res.status})` });
+    });
+  });
+}
+
 export interface ProviderTestInput {
   base_url: string;
   api_key: string;
@@ -349,6 +460,12 @@ export interface ProviderTestInput {
 
 function hasModality(model: ModelView, modality: Modality): boolean {
   return model.modalities.includes(modality);
+}
+
+// ASR models speak the SAUC WebSocket binary protocol (submit_path contains
+// /sauc/); TTS models are plain HTTP. The adapter decides the probe transport.
+function isAsrModel(model: ModelView): boolean {
+  return model.adapter?.submit_path?.includes('/sauc/') ?? false;
 }
 
 // L1 provider test: prefer a minimal chat call when a text model is known
@@ -423,6 +540,14 @@ export async function testProvider(
       created_at: '',
       updated_at: '',
     };
+    if (isAsrModel(modelView)) {
+      return probeAsrWs(
+        input.base_url,
+        input.api_key,
+        modelView,
+        TEST_TIMEOUT_MS,
+      );
+    }
     return probeTts(
       input.base_url,
       input.api_key,
@@ -607,6 +732,14 @@ export async function testModel(
   }
 
   if (model.modalities.includes('audio')) {
+    if (isAsrModel(model)) {
+      return probeAsrWs(
+        input.base_url,
+        input.api_key,
+        model,
+        GENERATION_TIMEOUT_MS,
+      );
+    }
     return probeTts(
       input.base_url,
       input.api_key,

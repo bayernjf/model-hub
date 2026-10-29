@@ -5,6 +5,7 @@ import {
   type FetchLike,
   type ProviderTestInput,
   type ModelTestInput,
+  type AsrProbeSocketFactory,
 } from '../src/connection-test.js';
 import { SlidingWindowRateLimiter } from '../src/rate-limit.js';
 import type { ModelView } from '../src/repositories/models.js';
@@ -402,5 +403,116 @@ describe('testModel (L2)', () => {
     expect(result.ok).toBe(true);
     expect(capturedHeaders['X-Api-Key']).toBe('sk-test');
     expect(capturedHeaders['X-Api-Resource-Id']).toBe('seed-tts-2.0');
+  });
+});
+
+describe('ASR WebSocket probe', () => {
+  function asrModel(over: Partial<ModelView> = {}): ModelView {
+    return makeModel({
+      modalities: ['audio'],
+      model: 'bigmodel',
+      adapter: {
+        auth_style: 'x-api-key',
+        resource_id: 'volc.seedasr.sauc.duration',
+        submit_path: '/api/v3/plan/sauc/bigmodel_async',
+      },
+      ...over,
+    });
+  }
+
+  function fakeFactory(opts: {
+    onOpen?: boolean;
+    upgradeStatus?: number;
+    error?: boolean;
+  }): AsrProbeSocketFactory {
+    return (_url, _headers) => {
+      const handlers: {
+        open?: () => void;
+        error?: (err: Error) => void;
+        upgrade?: (res: { status: number }) => void;
+      } = {};
+      const socket = {
+        onOpen: (cb: () => void) => {
+          handlers.open = cb;
+        },
+        onError: (cb: (err: Error) => void) => {
+          handlers.error = cb;
+        },
+        onUnexpectedResponse: (cb: (res: { status: number }) => void) => {
+          handlers.upgrade = cb;
+        },
+        close: () => {},
+      };
+      // Fire synchronously to keep the test deterministic.
+      if (opts.onOpen) queueMicrotask(() => handlers.open?.());
+      if (opts.upgradeStatus !== undefined)
+        queueMicrotask(() => handlers.upgrade?.({ status: opts.upgradeStatus! }));
+      if (opts.error) queueMicrotask(() => handlers.error?.(new Error('boom')));
+      return socket;
+    };
+  }
+
+  it('uses a fake socket factory to validate handshake success', async () => {
+    // Drive probeAsrWs indirectly: build a model whose submit_path is sauc,
+    // then run testModel with a factory injected through the module's export
+    // is not possible, so we exercise the happy path by checking the header
+    // contract via a captured factory below.
+    const captured: { url: string; headers: Record<string, string> }[] = [];
+    const factory: AsrProbeSocketFactory = (_url, headers) => {
+      captured.push({ url: _url, headers });
+      const handlers: Record<string, (arg?: unknown) => void> = {};
+      queueMicrotask(() => handlers.open?.());
+      return {
+        onOpen: (cb) => {
+          handlers.open = cb;
+        },
+        onError: () => {},
+        onUnexpectedResponse: () => {},
+        close: () => {},
+      };
+    };
+    // Direct import of probeAsrWs through the same module.
+    const { probeAsrWs } = await import('../src/connection-test.js');
+    const result = await probeAsrWs(
+      'https://openspeech.bytedance.com',
+      'sk-test',
+      asrModel(),
+      5_000,
+      factory,
+    );
+    expect(result.ok).toBe(true);
+    expect(captured[0]?.url).toBe(
+      'wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_async',
+    );
+    expect(captured[0]?.headers['X-Api-Key']).toBe('sk-test');
+    expect(captured[0]?.headers['X-Api-Resource-Id']).toBe(
+      'volc.seedasr.sauc.duration',
+    );
+  });
+
+  it('classifies a 401 WebSocket upgrade as unauthorized', async () => {
+    const { probeAsrWs } = await import('../src/connection-test.js');
+    const result = await probeAsrWs(
+      'https://openspeech.bytedance.com',
+      'sk-test',
+      asrModel(),
+      5_000,
+      fakeFactory({ upgradeStatus: 401 }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('unauthorized');
+  });
+
+  it('classifies a failed connection as network', async () => {
+    const { probeAsrWs } = await import('../src/connection-test.js');
+    const result = await probeAsrWs(
+      'https://openspeech.bytedance.com',
+      'sk-test',
+      asrModel(),
+      5_000,
+      fakeFactory({ error: true }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('network');
   });
 });
