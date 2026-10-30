@@ -68,7 +68,7 @@ export function sessionRoutes(
       return c.json({ error: { code: 'invalid_credentials' } }, 401);
     }
 
-    const token = createSessionToken(identity, config.masterKey);
+    const token = createSessionToken(identity, config.sessionKey);
     loginLimiter.clear(ip); // a correct login lifts any earlier lockout
     writeAudit(db, {
       actor: identity.username,

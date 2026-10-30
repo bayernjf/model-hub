@@ -1,4 +1,9 @@
-import { createHash, createSecretKey, type KeyObject } from 'node:crypto';
+import {
+  createHash,
+  createSecretKey,
+  hkdfSync,
+  type KeyObject,
+} from 'node:crypto';
 
 export class UnknownKeyError extends Error {
   constructor(kid: string) {
@@ -49,9 +54,26 @@ export class KeyRing {
 
 // Derive a 32-byte AES key from the master key. The master key is a
 // high-entropy random secret, so SHA-256 is an appropriate KDF here.
+// NOTE: byte-for-byte compatibility with already-sealed ciphertexts is
+// mandatory — do not change this derivation.
 export function deriveKey(masterKey: string): KeyObject {
   const digest = createHash('sha256').update(masterKey, 'utf8').digest();
   return createSecretKey(digest);
+}
+
+// Session tokens must not be signed with the data-encryption key. Derive an
+// independent HKDF subkey instead; rotating one no longer implicates the
+// other. Existing cookies break once (acceptable: sessions are 12h and
+// users can log in again); sealed data stays decryptable.
+export function deriveSessionKey(masterKey: string): string {
+  const derived = hkdfSync(
+    'sha256',
+    Buffer.from(masterKey, 'utf8'),
+    Buffer.alloc(0),
+    Buffer.from('sess'),
+    32,
+  );
+  return Buffer.from(derived).toString('hex');
 }
 
 // v1 ring: a single kid "k1" derived from HUB_MASTER_KEY. Rotation later

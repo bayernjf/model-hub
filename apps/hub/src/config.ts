@@ -1,5 +1,6 @@
 // Central server configuration. All environment variables are parsed and
 // validated here so the rest of the code reads a typed, fail-closed config.
+import { deriveSessionKey } from './crypto/keyring.js';
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -13,6 +14,9 @@ export type AdminRole = 'owner' | 'operator';
 export interface HubConfig {
   /** Master key for envelope encryption (W1-3 derives the AES key). */
   masterKey: string;
+  /** HKDF subkey (info="sess") used to sign session tokens; independent of
+   * the data-encryption key derived from masterKey. */
+  sessionKey: string;
   /** Owner (full-access) console username. */
   ownerUsername: string;
   /** Owner console password. */
@@ -71,6 +75,7 @@ export function loadConfig(
 
   return {
     masterKey,
+    sessionKey: deriveSessionKey(masterKey),
     ownerUsername,
     adminPassword,
     operatorUsername,

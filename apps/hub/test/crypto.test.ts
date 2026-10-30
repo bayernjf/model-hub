@@ -1,7 +1,9 @@
-import { createSecretKey, randomBytes } from 'node:crypto';
+import { createHash, createSecretKey, randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   buildKeyRing,
+  deriveKey,
+  deriveSessionKey,
   KeyRing,
   UnknownKeyError,
 } from '../src/crypto/keyring.js';
@@ -98,6 +100,45 @@ describe('envelope encryption', () => {
     const legacy = encrypt('legacy', oldRing);
 
     expect(decrypt(legacy, ring)).toBe('legacy');
+  });
+});
+
+describe('key derivation split (enc vs session)', () => {
+  it('keeps the enc derivation byte-identical to legacy SHA-256', () => {
+    // Existing ciphertexts are sealed under SHA-256(masterKey); this contract
+    // must never change.
+    const legacy = createHash('sha256').update(MASTER, 'utf8').digest();
+    expect(deriveKey(MASTER).export()).toEqual(legacy);
+    expect(deriveKey(MASTER).export().byteLength).toBe(32);
+  });
+
+  it('derives a deterministic 32-byte session subkey distinct from the enc key', () => {
+    const sess1 = deriveSessionKey(MASTER);
+    const sess2 = deriveSessionKey(MASTER);
+    expect(sess1).toBe(sess2);
+    expect(Buffer.from(sess1, 'hex').byteLength).toBe(32);
+    expect(sess1).not.toBe(deriveKey(MASTER).export().toString('hex'));
+    expect(deriveSessionKey('other-master-key-0123456789')).not.toBe(sess1);
+  });
+
+  it('verifies session tokens signed with the session subkey only', async () => {
+    const { createSessionToken, verifySessionToken } = await import(
+      '../src/auth/session.js'
+    );
+    const sessionKey = deriveSessionKey(MASTER);
+    const token = createSessionToken(
+      { username: 'owner', role: 'owner' },
+      sessionKey,
+    );
+
+    expect(verifySessionToken(token, sessionKey)).not.toBeNull();
+    // Old cookies signed with the raw master key are invalidated on purpose.
+    const legacyToken = createSessionToken(
+      { username: 'owner', role: 'owner' },
+      MASTER,
+    );
+    expect(verifySessionToken(legacyToken, sessionKey)).toBeNull();
+    expect(verifySessionToken(token, MASTER)).toBeNull();
   });
 });
 
