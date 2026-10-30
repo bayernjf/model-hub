@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { deriveSessionKey } from '../src/crypto/keyring.js';
 import { ConfigError, loadConfig } from '../src/config.js';
 
 const validSecrets = {
@@ -18,6 +19,9 @@ describe('loadConfig', () => {
     expect(cfg.dataDir).toBe('/tmp/hub-data');
     expect(cfg.devNoAuth).toBe(false);
     expect(cfg.masterKey).toBe(validSecrets.HUB_MASTER_KEY);
+    // Sessions sign with a dedicated HKDF subkey, never the master key.
+    expect(cfg.sessionKey).toBe(deriveSessionKey(validSecrets.HUB_MASTER_KEY));
+    expect(cfg.sessionKey).not.toBe(validSecrets.HUB_MASTER_KEY);
   });
 
   it('applies defaults when port and data dir are omitted', () => {
