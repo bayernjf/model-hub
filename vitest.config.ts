@@ -19,7 +19,12 @@ const externalizeNodeSqlite = {
 export default defineConfig({
   plugins: [externalizeNodeSqlite],
   test: {
-    include: ['apps/*/test/**/*.test.ts', 'packages/*/test/**/*.test.ts'],
+    include: [
+      'apps/*/test/**/*.test.ts',
+      // Hub web (Astro admin console) unit tests.
+      'apps/*/web/test/**/*.test.ts',
+      'packages/*/test/**/*.test.ts',
+    ],
     testTimeout: 30000,
     pool: 'threads',
   },
