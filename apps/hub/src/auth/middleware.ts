@@ -44,7 +44,7 @@ export function requireAdmin(config: HubConfig): MiddlewareHandler<AppEnv> {
     }
 
     const raw = parseSessionCookie(c.req.header('Cookie') ?? null);
-    const session = raw ? verifySessionToken(raw, config.masterKey) : null;
+    const session = raw ? verifySessionToken(raw, config.sessionKey) : null;
     c.set('session', session);
 
     if (!session) {
