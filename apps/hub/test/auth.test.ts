@@ -263,7 +263,12 @@ describe('PersistentLoginLimiter', () => {
 });
 
 describe('dev-no-auth mode', () => {
-  it('grants a synthetic owner session on loopback', async () => {
+  /** Fake node binding: getConnInfo reads c.env.incoming.socket.remoteAddress. */
+  function peerEnv(remoteAddress: string) {
+    return { incoming: { socket: { remoteAddress } } } as never;
+  }
+
+  it('grants a synthetic owner session to a loopback peer', async () => {
     const config = loadConfig({
       HUB_DEV_NO_AUTH: '1',
       HUB_MASTER_KEY: '',
@@ -273,13 +278,32 @@ describe('dev-no-auth mode', () => {
     migrateUp(db);
     const app = createApp(config, db);
 
-    const res = await app.request('/api/admin/session', {
-      headers: { Host: 'localhost:8791' },
-    });
+    const res = await app.request(
+      '/api/admin/session',
+      { headers: { Host: 'localhost:8791' } },
+      peerEnv('127.0.0.1'),
+    );
     expect(res.status).toBe(200);
   });
 
-  it('denies access on a non-loopback host', async () => {
+  it('denies a remote peer even when it spoofs a loopback Host header', async () => {
+    const config = loadConfig({
+      HUB_DEV_NO_AUTH: '1',
+      HUB_MASTER_KEY: '',
+      HUB_ADMIN_PASSWORD: '',
+    });
+    const db = openDatabase(':memory:');
+    const app = createApp(config, db);
+
+    const res = await app.request(
+      '/api/admin/session',
+      { headers: { Host: 'localhost:8791' } },
+      peerEnv('203.0.113.9'),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('refuses when the adapter exposes no socket to verify', async () => {
     const config = loadConfig({
       HUB_DEV_NO_AUTH: '1',
       HUB_MASTER_KEY: '',
@@ -289,7 +313,7 @@ describe('dev-no-auth mode', () => {
     const app = createApp(config, db);
 
     const res = await app.request('/api/admin/session', {
-      headers: { Host: '10.0.0.5:8791' },
+      headers: { Host: 'localhost:8791' },
     });
     expect(res.status).toBe(401);
   });

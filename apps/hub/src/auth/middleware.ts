@@ -1,6 +1,6 @@
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import type { HubConfig } from '../config.js';
-import { isLoopbackHost } from './request.js';
+import { isLoopbackPeer } from './request.js';
 import {
   parseSessionCookie,
   verifySessionToken,
@@ -34,7 +34,7 @@ function redirectToLogin(c: Context): Response {
 export function requireAdmin(config: HubConfig): MiddlewareHandler<AppEnv> {
   return async (c: Context<AppEnv>, next: Next) => {
     if (config.devNoAuth) {
-      if (!isLoopbackHost(c)) return unauthorized(c);
+      if (!isLoopbackPeer(c)) return unauthorized(c);
       c.set('session', {
         username: 'dev',
         role: 'owner',

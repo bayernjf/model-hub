@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { getConnInfo } from '@hono/node-server/conninfo';
 
 // Best-effort client IP for audit records and the login throttle. The service
 // is loopback-only in development and sits behind a single Caddy hop in
@@ -32,15 +33,24 @@ export function isHttps(c: Context): boolean {
   return new URL(c.req.url).protocol === 'https:';
 }
 
-// Whether the request targets a loopback host. HUB_DEV_NO_AUTH is permitted
-// only when the Host header is a loopback name.
-export function isLoopbackHost(c: Context): boolean {
-  const host = (c.req.header('host') ?? '').toLowerCase();
-  const name = host.split(':')[0] ?? '';
+// Whether the request arrived over a loopback socket. HUB_DEV_NO_AUTH is a
+// developer convenience, so it must not be grantable over the network: the
+// Host header is caller-controlled and says nothing about who actually
+// connected, so a remote caller could pass it by sending `Host: 127.0.0.1`.
+//
+// Fail closed: when the adapter exposes no socket (unit tests using
+// app.request without env, or another runtime), there is nothing to verify and
+// the synthetic session is refused.
+export function isLoopbackPeer(c: Context): boolean {
+  let address: string | undefined;
+  try {
+    address = getConnInfo(c).remote.address;
+  } catch {
+    return false;
+  }
   return (
-    name === 'localhost' ||
-    name === '127.0.0.1' ||
-    name === '::1' ||
-    name === '[::1]'
+    address === '127.0.0.1' ||
+    address === '::1' ||
+    address === '::ffff:127.0.0.1'
   );
 }
