@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://model-hub.local/schemas/usage-summary-response.json",
+  "title": "GET /pub/v1/usage/summary response",
+  "description": "Per-assignment budget readout for the current UTC day. Spent is the builtin cost_micros sum of today's usage events; BYOK traffic never counts (owner does not pay for user keys).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project", "day", "generated_at", "models", "unassigned_spent_micros"],
+  "properties": {
+    "project": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Project slug this summary is bound to."
+    },
+    "day": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "UTC day (YYYY-MM-DD) the spend is aggregated over."
+    },
+    "generated_at": { "$ref": "common.json#/$defs/timestamp" },
+    "models": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/assignment_budget" }
+    },
+    "unassigned_spent_micros": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Builtin spend of the day not attributable to a current assignment (rows reported without an assignment, or one since replaced)."
+    }
+  },
+  "$defs": {
+    "assignment_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assignment_id",
+        "alias",
+        "role",
+        "model",
+        "spent_micros",
+        "daily_budget_micros",
+        "percent"
+      ],
+      "properties": {
+        "assignment_id": {
+          "type": "string",
+          "pattern": "^asn_[a-zA-Z0-9_]+$"
+        },
+        "alias": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "role": { "$ref": "common.json#/$defs/role" },
+        "model": { "type": "string", "minLength": 1 },
+        "spent_micros": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Builtin cost_micros summed over the UTC day for this assignment."
+        },
+        "daily_budget_micros": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Configured daily budget; null when the assignment has none (no enforcement)."
+        },
+        "percent": {
+          "type": ["number", "null"],
+          "description": "spent/limit as a percent, rounded to 2 decimals; null when the budget is unset or zero."
+        }
+      }
+    }
+  }
+}

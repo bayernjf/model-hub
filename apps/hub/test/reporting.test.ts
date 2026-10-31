@@ -176,6 +176,17 @@ describe('usage reporting', () => {
     const events = usageRepo.listByProject(s.projectId);
     expect(events[0]?.assignment_id).toBeNull();
   });
+
+  it('persists the degraded flag, defaulting to false', async () => {
+    await report({ ...validUsage, assignment_id: s.assignmentId, degraded: true });
+    await report({ ...validUsage, assignment_id: s.assignmentId });
+    const usageRepo = new UsageRepository(s.t.db);
+    const events = usageRepo.listByProject(s.projectId);
+    expect(events).toHaveLength(2);
+    const flagged = events.filter((e) => e.degraded);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]?.model).toBe(validUsage.model);
+  });
 });
 
 describe('usage aggregation', () => {

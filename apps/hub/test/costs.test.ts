@@ -4,7 +4,7 @@ import { makeTestApp, login } from './helpers.js';
 // W7-4 read-only cost dashboard: aggregation math must split builtin owner
 // cost from byok volume, and break down by project / model / day.
 
-async function setup() {
+async function setup(opts?: { dailyBudgetMicros?: number }) {
   const t = makeTestApp();
   const cookie = await login(t.app);
 
@@ -62,7 +62,15 @@ async function setup() {
     headers: { 'Content-Type': 'application/json', Cookie: cookie },
     body: JSON.stringify({
       project_id: projectId,
-      assignments: [{ model_id: modelId, alias: 'noul' }],
+      assignments: [
+        {
+          model_id: modelId,
+          alias: 'noul',
+          ...(opts?.dailyBudgetMicros !== undefined
+            ? { daily_budget_micros: opts.dailyBudgetMicros }
+            : {}),
+        },
+      ],
     }),
   });
   const assignmentId = (
@@ -303,5 +311,94 @@ describe('cost dashboard', () => {
     };
     expect(data.totals.builtin.calls).toBe(0);
     expect(data.totals.byok.calls).toBe(0);
+  });
+});
+
+describe('budget watermark column (W5-3)', () => {
+  let s: Awaited<ReturnType<typeof setup>>;
+  beforeEach(async () => {
+    s = await setup({ dailyBudgetMicros: 1_000_000 });
+  });
+
+  async function report(body: Record<string, unknown>) {
+    return s.t.app.request('/pub/v1/usage', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${s.token}`,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function fetchBudgets(query = '') {
+    const res = await s.t.app.request(`/api/admin/costs${query}`, {
+      headers: { Cookie: s.cookie },
+    });
+    expect(res.status).toBe(200);
+    return (await res.json()) as {
+      budgets: Array<{
+        project: string;
+        assignment_id: string;
+        alias: string | null;
+        role: string;
+        model: string;
+        spent_micros: number;
+        daily_budget_micros: number;
+        percent: number | null;
+      }>;
+    };
+  }
+
+  it('shows today UTC spend against the daily budget', async () => {
+    // 1M input + 1M output at doubao-seed-1-6 pricing = 420000 micros.
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 1_000_000,
+      output_tokens: 1_000_000,
+      ts: new Date().toISOString(),
+    });
+
+    const data = await fetchBudgets();
+    expect(data.budgets).toHaveLength(1);
+    const row = data.budgets[0]!;
+    expect(row.project).toBe('zeus');
+    expect(row.assignment_id).toBe(s.assignmentId);
+    expect(row.alias).toBe('noul');
+    expect(row.role).toBe('primary');
+    expect(row.model).toBe('doubao-seed-1-6-250615');
+    expect(row.spent_micros).toBe(420_000);
+    expect(row.daily_budget_micros).toBe(1_000_000);
+    expect(row.percent).toBe(42);
+  });
+
+  it('is unaffected by the requested aggregation window', async () => {
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 1_000_000,
+      output_tokens: 1_000_000,
+      ts: '2026-10-27T10:00:00.000Z',
+    });
+
+    // The window excludes the report, but the watermark is a "now" reading
+    // for the current UTC day, so it stays at zero.
+    const data = await fetchBudgets('?from=2026-10-27&to=2026-10-28');
+    expect(data.budgets[0]?.spent_micros).toBe(0);
+    expect(data.budgets[0]?.percent).toBe(0);
+  });
+
+  it('omits assignments without a configured budget', async () => {
+    const plain = await setup();
+    const res = await plain.t.app.request('/api/admin/costs', {
+      headers: { Cookie: plain.cookie },
+    });
+    const data = (await res.json()) as {
+      budgets: unknown[];
+    };
+    expect(data.budgets).toEqual([]);
   });
 });

@@ -78,6 +78,8 @@ npm run check:all        # typecheck + lint + test + build 串行
 - 知识库（可选，M3）：`KNOWLEDGE_PROJECT_TOKEN`、`KNOWLEDGE_HUB_URL`、
   `KNOWLEDGE_EMBED_ALIAS`、`KNOWLEDGE_RERANK_ALIAS`、`KNOWLEDGE_ANSWER_ALIAS`；
   token 未设时 ingest/query 返回 503。接口契约见 `docs/knowledge-api.md`。
+- 预算水位告警（可选，M5）：`HUB_BUDGET_WEBHOOK_URL`、`HUB_BUDGET_WEBHOOK_SECRET`；
+  URL 未设时告警层整体跳过。语义与接收端契约见 `docs/cost-governance.md`。
 - 真实 key 只经管理台 UI 录入加密入库，或放 gitignored 的 `.env.local`；
   禁止写入文档、提交历史、日志、构建产物。
 

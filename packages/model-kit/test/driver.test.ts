@@ -12,7 +12,11 @@ import {
 import { postUsage } from '../src/reporter.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { CatalogResponse, ResolvedModel } from '../src/index.js';
+import type {
+  CatalogResponse,
+  ResolvedModel,
+  UsageSummary,
+} from '../src/index.js';
 
 const fixturePath = fileURLToPath(
   new URL(
@@ -23,6 +27,23 @@ const fixturePath = fileURLToPath(
 const catalog = JSON.parse(
   readFileSync(fixturePath, 'utf8'),
 ) as CatalogResponse;
+
+// Empty summary: every assignment reads as zero spend (no budget pressure).
+const usageSummary: UsageSummary = {
+  project: catalog.project,
+  day: '2026-10-27',
+  generated_at: '2026-10-27T10:00:00Z',
+  models: catalog.models.map((m) => ({
+    assignment_id: m.assignment_id,
+    alias: m.alias,
+    role: m.role,
+    model: m.model,
+    spent_micros: 0,
+    daily_budget_micros: m.daily_budget_micros,
+    percent: null,
+  })),
+  unassigned_spent_micros: 0,
+};
 
 let dir: string;
 beforeEach(() => {
@@ -128,6 +149,9 @@ describe('usage reporting', () => {
       const url = String(input);
       if (url.includes('/pub/v1/models')) {
         return new Response(JSON.stringify(catalog), { status: 200 });
+      }
+      if (url.includes('/pub/v1/usage/summary')) {
+        return new Response(JSON.stringify(usageSummary), { status: 200 });
       }
       if (url.includes('/pub/v1/usage')) {
         usageCalls.push(url);

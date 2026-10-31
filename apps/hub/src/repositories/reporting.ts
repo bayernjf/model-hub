@@ -17,6 +17,9 @@ export interface UsageEventInsert {
   http_status: number;
   cached: boolean;
   cost_micros: number | null;
+  // True when the kit rerouted the call to this assignment because the
+  // requested primary crossed its daily budget (FR6-2). Defaults to false.
+  degraded?: boolean | undefined;
   ts: string;
 }
 
@@ -47,6 +50,7 @@ export interface UsageEventView {
   quantity: number | null;
   http_status: number;
   cost_micros: number | null;
+  degraded: boolean;
   ts: string;
 }
 
@@ -85,6 +89,16 @@ export interface CostAggregateWindow {
   to?: string;
 }
 
+// One row of the M5 budget watermark aggregation: builtin cost_micros summed
+// for the current UTC day, grouped by assignment (NULL group = rows reported
+// without a valid assignment). BYOK rows carry cost_micros NULL and therefore
+// contribute zero — the owner does not pay for user-supplied keys.
+export interface DailySpendRow {
+  project_id: string;
+  assignment_id: string | null;
+  cost_micros: number;
+}
+
 export class UsageRepository {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -97,8 +111,8 @@ export class UsageRepository {
            (id, project_id, feature, billing_source, billing_type, provider,
             model, assignment_id, input_tokens, output_tokens,
             cache_read_tokens, reasoning_tokens, quantity, http_status,
-            cached, cost_micros, ts, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            cached, cost_micros, degraded, ts, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -117,6 +131,7 @@ export class UsageRepository {
         input.http_status,
         input.cached ? 1 : 0,
         input.cost_micros,
+        input.degraded ? 1 : 0,
         input.ts,
         createdAt,
       );
@@ -134,6 +149,7 @@ export class UsageRepository {
       quantity: input.quantity,
       http_status: input.http_status,
       cost_micros: input.cost_micros,
+      degraded: input.degraded ?? false,
       ts: input.ts,
     };
   }
@@ -158,9 +174,29 @@ export class UsageRepository {
       quantity: number | null;
       http_status: number;
       cost_micros: number | null;
+      degraded: number;
       ts: string;
     }>;
-    return rows;
+    return rows.map((r) => ({ ...r, degraded: r.degraded === 1 }));
+  }
+
+  // Builtin spend for the current UTC day, grouped by project and assignment.
+  // The day boundary is evaluated inside SQLite (date(ts) = date('now'), both
+  // UTC) so the bucket flips exactly at 00:00 UTC regardless of host timezone.
+  spendTodayByAssignment(projectId?: string): DailySpendRow[] {
+    const where = projectId
+      ? 'WHERE date(u.ts) = date(\'now\') AND u.project_id = ?'
+      : 'WHERE date(u.ts) = date(\'now\')';
+    return this.db
+      .prepare(
+        `SELECT u.project_id AS project_id,
+                u.assignment_id AS assignment_id,
+                COALESCE(SUM(u.cost_micros), 0) AS cost_micros
+         FROM usage_events u
+         ${where}
+         GROUP BY u.project_id, u.assignment_id`,
+      )
+      .all(...(projectId ? [projectId] : [])) as unknown as DailySpendRow[];
   }
 
   // Raw aggregation for the read-only cost dashboard (W7-4). Groups by project
@@ -279,5 +315,53 @@ export class HealthCheckRepository {
 
   latestAll(): HealthCheckView[] {
     return this.latest();
+  }
+}
+
+export interface BudgetAlertInsert {
+  project_id: string;
+  assignment_id: string;
+  day: string;
+  level: '80' | '100';
+  spent_micros: number;
+  budget_micros: number;
+}
+
+export interface BudgetAlertView extends BudgetAlertInsert {
+  id: string;
+  created_at: string;
+}
+
+// Fire-once ledger for budget watermark alerts (FR6-3). The unique index on
+// (project_id, assignment_id, day, level) turns "notify at most once per UTC
+// day per level" into a database guarantee, so a burst of usage reports
+// around the threshold cannot storm the webhook.
+export class BudgetAlertRepository {
+  constructor(private readonly db: DatabaseSync) {}
+
+  // Insert the alert; returns the stored row, or null when an alert of the
+  // same (project, assignment, day, level) already exists.
+  recordOnce(input: BudgetAlertInsert): BudgetAlertView | null {
+    const id = newId('bal');
+    const createdAt = nowIso();
+    const result = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO budget_alerts
+           (id, project_id, assignment_id, day, level, spent_micros,
+            budget_micros, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        input.project_id,
+        input.assignment_id,
+        input.day,
+        input.level,
+        input.spent_micros,
+        input.budget_micros,
+        createdAt,
+      );
+    if (result.changes === 0) return null;
+    return { id, created_at: createdAt, ...input };
   }
 }

@@ -1,4 +1,5 @@
 import type {
+  DegradationInfo,
   ResolvedModel,
 } from './types.js';
 
@@ -19,6 +20,8 @@ export interface ChatResult {
   usage: TokenUsage | null;
   httpStatus: number;
   raw: unknown;
+  /** Set when the kit rerouted the call to a fallback (budget governance). */
+  degraded?: DegradationInfo | undefined;
 }
 
 export interface ChatCall {
@@ -78,6 +81,8 @@ export interface StreamChunk {
   delta: string;
   usage: TokenUsage | null;
   done: boolean;
+  /** Set on the final chunk when the call was rerouted to a fallback. */
+  degraded?: DegradationInfo | undefined;
 }
 
 // Parse SSE `data:` lines from a stream into chunk objects.

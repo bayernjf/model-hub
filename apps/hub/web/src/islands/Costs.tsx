@@ -21,6 +21,21 @@ interface CostsResponse {
   by_project: Array<{ project: string } & SourceSplit>;
   by_day: Array<{ day: string } & SourceSplit>;
   by_model: Array<{ project: string; model: string } & SourceSplit>;
+  budgets: BudgetRow[];
+}
+
+// Budget watermark (W5-3): today's UTC builtin spend per budgeted
+// assignment vs its daily budget. Rows without a configured budget are
+// omitted server-side.
+interface BudgetRow {
+  project: string;
+  assignment_id: string;
+  alias: string | null;
+  role: string;
+  model: string;
+  spent_micros: number;
+  daily_budget_micros: number;
+  percent: number | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -49,6 +64,25 @@ function windowQuery(range: RangeKey): string {
 
 function usd(micros: number): string {
   return `$${(micros / 1_000_000).toFixed(4)}`;
+}
+
+function watermarkColor(percent: number | null): string {
+  if (percent === null) return 'var(--warn, #b45309)';
+  if (percent >= 100) return 'var(--bad, #b91c1c)';
+  if (percent >= 80) return 'var(--warn, #b45309)';
+  return 'inherit';
+}
+
+function BudgetWatermark({ row }: { row: BudgetRow }) {
+  if (row.percent === null) {
+    return <span style={{ color: watermarkColor(null) }}>超限（零预算）</span>;
+  }
+  return (
+    <span style={{ color: watermarkColor(row.percent) }}>
+      {row.percent.toFixed(2)}%（{usd(row.spent_micros)} /{' '}
+      {usd(row.daily_budget_micros)}）
+    </span>
+  );
 }
 
 function Row({ split }: { split: SourceSplit }) {
@@ -201,6 +235,43 @@ export default function Costs() {
               <tr key={row.project}>
                 <td>{row.project}</td>
                 <Row split={row} />
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>预算水位（UTC 当日）</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>项目</th>
+              <th>别名</th>
+              <th>角色</th>
+              <th>模型</th>
+              <th>已用（今日）</th>
+              <th>日预算</th>
+              <th>水位</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.budgets.length === 0 && (
+              <tr>
+                <td colSpan={7}>暂无配置日预算的分配</td>
+              </tr>
+            )}
+            {data.budgets.map((row) => (
+              <tr key={row.assignment_id}>
+                <td>{row.project}</td>
+                <td>{row.alias ?? '—'}</td>
+                <td>{row.role}</td>
+                <td>{row.model}</td>
+                <td>{usd(row.spent_micros)}</td>
+                <td>{usd(row.daily_budget_micros)}</td>
+                <td>
+                  <BudgetWatermark row={row} />
+                </td>
               </tr>
             ))}
           </tbody>

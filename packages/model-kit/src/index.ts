@@ -5,6 +5,13 @@ import {
   primaryFor,
   resolveByAlias,
 } from './resolve.js';
+import {
+  budgetStateFor,
+  fetchUsageSummary,
+  isBudgetEnforcementEnabled,
+  pickModelForCall,
+  type BudgetState,
+} from './budget.js';
 import { pingHub, runTest } from './health.js';
 import { completeJson, streamChat } from './driver.js';
 import type { ChatMessage, ChatResult, StreamChunk } from './driver.js';
@@ -17,12 +24,14 @@ import type { AsrResult, AsrSocketFactory } from './asr.js';
 import { reportUsageInBackground } from './reporter.js';
 import type {
   CatalogResponse,
+  DegradationInfo,
   DriverFactory,
   ModelKitOptions,
   PingResult,
   ProjectedModel,
   ResolvedModel,
   TestResult,
+  UsageSummary,
 } from './types.js';
 
 export const KIT_VERSION = '0.1.0';
@@ -76,11 +85,20 @@ function envToResolved(
 
 export class ModelKit {
   private catalog: CatalogResponse | null = null;
+  // Last /pub/v1/usage/summary snapshot; aligned with the catalog refresh
+  // cadence (see pullBudgetSummary). Null until the first successful pull.
+  private budgetSummary: UsageSummary | null = null;
   private readonly fetchImpl: typeof fetch;
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly options: ModelKitOptions) {
     this.fetchImpl = options.fetch ?? fetch;
+  }
+
+  // Cost governance kill switch (W5-2): 'off' disables the entire budget
+  // layer — no summary fetch, no enforcement, no degradation.
+  private get governanceEnabled(): boolean {
+    return isBudgetEnforcementEnabled(this.options.budgetEnforcement);
   }
 
   // Initial load: pull, fall back to cache, then env. Never starts bare:
@@ -108,6 +126,8 @@ export class ModelKit {
       }
     }
 
+    await this.pullBudgetSummary();
+
     const interval = this.options.refreshIntervalMs ?? 5 * 60 * 1000;
     this.timer = setInterval(() => {
       void this.refresh();
@@ -133,6 +153,25 @@ export class ModelKit {
       }
     } catch {
       // retain current catalog/cache
+    }
+    await this.pullBudgetSummary();
+  }
+
+  // Refresh the budget readout (W5-1). Runs on the same cadence as the
+  // catalog refresh (default every 5 minutes, plus once per init/refresh).
+  // Fail-soft: on error the previous snapshot is retained (or stays null),
+  // and enforcement treats an unknown spend as under budget so a hub outage
+  // never blocks calls.
+  private async pullBudgetSummary(): Promise<void> {
+    if (!this.governanceEnabled) return;
+    try {
+      this.budgetSummary = await fetchUsageSummary(
+        this.options.hubUrl,
+        this.options.token,
+        this.fetchImpl,
+      );
+    } catch {
+      // keep the previous summary, if any
     }
   }
 
@@ -180,6 +219,40 @@ export class ModelKit {
     );
   }
 
+  /**
+   * Budget readout for one alias (W5-1): UTC-day spend from the hub summary
+   * against the assignment's daily budget. Returns null when the alias has
+   * no hub assignment (BYOK/env) or when the governance layer is disabled.
+   *
+   * Immediacy: the snapshot is refreshed with the catalog (init plus the
+   * shared timer, default every 5 minutes), so it can lag the hub ledger by
+   * up to one refresh interval plus usage-report latency. In-process calls
+   * made since the last refresh are not reflected until the next pull.
+   */
+  getDailyBudgetState(alias: string): BudgetState | null {
+    if (!this.governanceEnabled) return null;
+    return budgetStateFor(this.models, this.budgetSummary, alias);
+  }
+
+  // Pre-call budget check shared by every alias call. Returns the model to
+  // use (possibly a fallback) plus degradation provenance; throws
+  // BudgetExceededError when over budget with no fallback available.
+  private precheck(
+    alias: string,
+    modality: string,
+  ): { model: ResolvedModel; degraded: DegradationInfo | null } {
+    if (!this.governanceEnabled) {
+      return { model: this.resolve(alias), degraded: null };
+    }
+    return pickModelForCall(
+      this.models,
+      this.budgetSummary,
+      alias,
+      modality,
+      (a) => this.resolve(a),
+    );
+  }
+
   async pingHub(): Promise<PingResult> {
     return pingHub(this.options.hubUrl, this.options.token, this.fetchImpl);
   }
@@ -198,6 +271,8 @@ export class ModelKit {
   }
 
   // Fire a usage report after a call. BYOK is reported with no hub cost.
+  // Degraded calls (rerouted by budget governance) are flagged so the hub
+  // ledger can attribute the spend (FR6-2).
   private reportUsage(
     feature: string,
     model: ResolvedModel,
@@ -207,6 +282,7 @@ export class ModelKit {
       reasoning_tokens?: number;
     } | null,
     httpStatus: number,
+    degraded?: DegradationInfo | null,
   ): void {
     const project = this.catalog?.project ?? model.alias ?? 'unknown';
     void reportUsageInBackground(
@@ -222,6 +298,7 @@ export class ModelKit {
         outputTokens: usage?.completion_tokens,
         reasoningTokens: usage?.reasoning_tokens,
         httpStatus,
+        ...(degraded ? { degraded: true } : {}),
       },
     );
   }
@@ -236,7 +313,7 @@ export class ModelKit {
       temperature?: number | undefined;
     },
   ): Promise<ChatResult> {
-    const model = this.resolve(alias);
+    const { model, degraded } = this.precheck(alias, 'text');
     const result = await completeJson(
       {
         model,
@@ -247,11 +324,12 @@ export class ModelKit {
       },
       this.fetchImpl,
     );
-    this.reportUsage(alias, model, result.usage, result.httpStatus);
-    return result;
+    this.reportUsage(alias, model, result.usage, result.httpStatus, degraded);
+    return degraded ? { ...result, degraded } : result;
   }
 
-  // Streaming chat; reports usage from the final include_usage frame.
+  // Streaming chat; reports usage from the final include_usage frame. The
+  // final done chunk carries the degradation provenance when rerouted.
   async *stream(
     alias: string,
     messages: ChatMessage[],
@@ -261,7 +339,7 @@ export class ModelKit {
       temperature?: number | undefined;
     },
   ): AsyncGenerator<StreamChunk> {
-    const model = this.resolve(alias);
+    const { model, degraded } = this.precheck(alias, 'text');
     let usage: StreamChunk['usage'] = null;
     for await (const chunk of streamChat(
       {
@@ -274,9 +352,9 @@ export class ModelKit {
       this.fetchImpl,
     )) {
       if (chunk.usage) usage = chunk.usage;
-      yield chunk;
+      yield degraded && chunk.done ? { ...chunk, degraded } : chunk;
     }
-    this.reportUsage(alias, model, usage, 200);
+    this.reportUsage(alias, model, usage, 200, degraded);
   }
 
   // Embed text into vectors (synchronous). Reports the provider-echoed
@@ -286,7 +364,7 @@ export class ModelKit {
     input: string | string[],
     opts?: { signal?: AbortSignal | undefined },
   ): Promise<EmbedResult> {
-    const model = this.resolve(alias);
+    const { model, degraded } = this.precheck(alias, 'embedding');
     const result = await embedJson(
       { model, input, signal: opts?.signal },
       this.fetchImpl,
@@ -298,8 +376,9 @@ export class ModelKit {
         ? { prompt_tokens: result.usage.prompt_tokens, completion_tokens: 0 }
         : null,
       result.httpStatus,
+      degraded,
     );
-    return result;
+    return degraded ? { ...result, degraded } : result;
   }
 
   // Generate an image (synchronous); returns the image URL.
@@ -308,13 +387,13 @@ export class ModelKit {
     prompt: string,
     opts?: { size?: string | undefined; signal?: AbortSignal | undefined },
   ): Promise<ImageResult> {
-    const model = this.resolve(alias);
+    const { model, degraded } = this.precheck(alias, 'image');
     const result = await generateImage(
       { model, prompt, size: opts?.size, signal: opts?.signal },
       this.fetchImpl,
     );
-    this.reportUsage(alias, model, null, result.httpStatus);
-    return result;
+    this.reportUsage(alias, model, null, result.httpStatus, degraded);
+    return degraded ? { ...result, degraded } : result;
   }
 
   // Generate a video (async submit + poll per the adapter dialect); returns the
@@ -327,7 +406,7 @@ export class ModelKit {
       pollTimeoutMs?: number | undefined;
     },
   ): Promise<VideoResult> {
-    const model = this.resolve(alias);
+    const { model, degraded } = this.precheck(alias, 'video');
     const result = await generateVideo(
       {
         model,
@@ -337,8 +416,8 @@ export class ModelKit {
       },
       this.fetchImpl,
     );
-    this.reportUsage(alias, model, null, result.httpStatus);
-    return result;
+    this.reportUsage(alias, model, null, result.httpStatus, degraded);
+    return degraded ? { ...result, degraded } : result;
   }
 
   // Synthesize speech (HTTP TTS). Returns decoded audio bytes (Doubao voice)
@@ -348,13 +427,13 @@ export class ModelKit {
     text: string,
     opts?: { signal?: AbortSignal | undefined },
   ): Promise<TtsResult> {
-    const model = this.resolve(alias);
+    const { model, degraded } = this.precheck(alias, 'audio');
     const result = await synthesize(
       { model, text, signal: opts?.signal },
       this.fetchImpl,
     );
-    this.reportUsage(alias, model, null, result.httpStatus);
-    return result;
+    this.reportUsage(alias, model, null, result.httpStatus, degraded);
+    return degraded ? { ...result, degraded } : result;
   }
 
   // Recognize speech (ASR over the SAUC binary WebSocket protocol). Returns
@@ -371,7 +450,7 @@ export class ModelKit {
       request?: Record<string, unknown> | undefined;
     },
   ): Promise<AsrResult> {
-    const model = this.resolve(alias);
+    const { model, degraded } = this.precheck(alias, 'audio');
     const factory: AsrSocketFactory =
       this.options.webSocketFactory ?? nodeWsFactory;
     const result = await transcribe(
@@ -387,8 +466,8 @@ export class ModelKit {
       },
       factory,
     );
-    this.reportUsage(alias, model, null, 200);
-    return result;
+    this.reportUsage(alias, model, null, 200, degraded);
+    return degraded ? { ...result, degraded } : result;
   }
 
   stop(): void {
@@ -455,5 +534,20 @@ export type {
 
 export { postUsage, reportUsageInBackground } from './reporter.js';
 export type { UsageInput } from './reporter.js';
+
+export {
+  budgetStateFor,
+  fetchUsageSummary,
+  isBudgetEnforcementEnabled,
+  pickModelForCall,
+  BudgetExceededError,
+  BudgetStateError,
+} from './budget.js';
+export type { BudgetState } from './budget.js';
+export type {
+  DegradationInfo,
+  UsageSummary,
+  UsageSummaryModel,
+} from './types.js';
 
 export { createFakeFetch, FakeProviderError } from './fake.js';

@@ -28,6 +28,7 @@ addFormats(ajv);
 ajv.addSchema(loadSchema('common.json'));
 ajv.addSchema(loadSchema('models-response.json'));
 ajv.addSchema(loadSchema('usage-request.json'));
+ajv.addSchema(loadSchema('usage-summary-response.json'));
 ajv.addSchema(loadSchema('health-check-request.json'));
 
 function getValidator(id: string) {
@@ -39,6 +40,7 @@ function getValidator(id: string) {
 const SCHEMA_IDS = {
   models: 'https://model-hub.local/schemas/models-response.json',
   usage: 'https://model-hub.local/schemas/usage-request.json',
+  usageSummary: 'https://model-hub.local/schemas/usage-summary-response.json',
   health: 'https://model-hub.local/schemas/health-check-request.json',
 };
 
@@ -52,6 +54,12 @@ describe('contract fixtures validate against their schemas', () => {
   it('accepts the usage-request fixture', () => {
     const validate = getValidator(SCHEMA_IDS.usage);
     const fixture = loadFixture('usage-request.example.json');
+    expect(validate(fixture), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  it('accepts the usage-summary-response fixture', () => {
+    const validate = getValidator(SCHEMA_IDS.usageSummary);
+    const fixture = loadFixture('usage-summary-response.example.json');
     expect(validate(fixture), JSON.stringify(validate.errors)).toBe(true);
   });
 
