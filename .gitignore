@@ -20,3 +20,5 @@ backups/
 # OS/editor
 .DS_Store
 *.egg-info/
+__pycache__/
+*.pyc
