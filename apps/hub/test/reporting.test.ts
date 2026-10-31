@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTestApp, login } from './helpers.js';
-import { UsageRepository } from '../src/repositories/reporting.js';
+import {
+  UsageRepository,
+  type UsageEventInsert,
+} from '../src/repositories/reporting.js';
 
 async function setup() {
   const t = makeTestApp();
@@ -172,6 +175,75 @@ describe('usage reporting', () => {
     const usageRepo = new UsageRepository(s.t.db);
     const events = usageRepo.listByProject(s.projectId);
     expect(events[0]?.assignment_id).toBeNull();
+  });
+});
+
+describe('usage aggregation', () => {
+  let s: Awaited<ReturnType<typeof setup>>;
+  beforeEach(async () => {
+    s = await setup();
+  });
+
+  function appendEvent(overrides: Partial<UsageEventInsert> & { ts: string }) {
+    const repo = new UsageRepository(s.t.db);
+    repo.append({
+      project_id: s.projectId,
+      feature: 'noul',
+      billing_source: 'builtin',
+      billing_type: 'payg',
+      provider: 'ark',
+      model: 'doubao-seed-1-6-250615',
+      assignment_id: s.assignmentId,
+      input_tokens: 100,
+      output_tokens: 50,
+      cache_read_tokens: 0,
+      reasoning_tokens: null,
+      quantity: null,
+      http_status: 200,
+      cached: false,
+      cost_micros: 1234,
+      ...overrides,
+    });
+  }
+
+  it('sums reasoning and cache-read tokens, treating NULL reasoning as zero', () => {
+    appendEvent({
+      ts: '2026-10-28T10:00:00.000Z',
+      reasoning_tokens: 120,
+      cache_read_tokens: 30,
+    });
+    appendEvent({
+      ts: '2026-10-28T11:00:00.000Z',
+      reasoning_tokens: null,
+      cache_read_tokens: 20,
+    });
+
+    const rows = new UsageRepository(s.t.db).aggregate();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.reasoning_tokens).toBe(120);
+    expect(rows[0]?.cache_read_tokens).toBe(50);
+    expect(rows[0]?.calls).toBe(2);
+  });
+
+  it('applies an inclusive from/to window', () => {
+    appendEvent({ ts: '2026-10-26T08:00:00.000Z' });
+    appendEvent({ ts: '2026-10-27T09:00:00.000Z' });
+    appendEvent({ ts: '2026-10-28T10:00:00.000Z' });
+
+    const repo = new UsageRepository(s.t.db);
+    expect(repo.aggregate()).toHaveLength(3);
+
+    const windowed = repo.aggregate({
+      from: '2026-10-27T00:00:00.000Z',
+      to: '2026-10-27T23:59:59.999Z',
+    });
+    expect(windowed).toHaveLength(1);
+    expect(windowed[0]?.day).toBe('2026-10-27');
+
+    expect(
+      repo.aggregate({ from: '2026-10-27T00:00:00.000Z' }),
+    ).toHaveLength(2);
+    expect(repo.aggregate({ to: '2026-10-26T23:59:59.999Z' })).toHaveLength(1);
   });
 });
 
