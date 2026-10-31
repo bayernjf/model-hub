@@ -1,6 +1,6 @@
 import type { Hono } from 'hono';
 import type { DatabaseSync } from 'node:sqlite';
-import { createApp } from '../src/app.js';
+import { createApp, type AppOverrides } from '../src/app.js';
 import { loadConfig, type HubConfig } from '../src/config.js';
 import { migrateUp } from '../src/db/migrate.js';
 import { openDatabase } from '../src/db/open.js';
@@ -13,6 +13,7 @@ export interface TestApp {
 
 export function makeTestApp(
   extraEnv: Record<string, string> = {},
+  overrides: AppOverrides = {},
 ): TestApp {
   const config = loadConfig({
     HUB_MASTER_KEY: 'master-key-0123456789abcdef',
@@ -22,7 +23,7 @@ export function makeTestApp(
   });
   const db = openDatabase(':memory:');
   migrateUp(db);
-  return { app: createApp(config, db), db, config };
+  return { app: createApp(config, db, overrides), db, config };
 }
 
 // Log in and return the Cookie header value (e.g. "hub_session=...").

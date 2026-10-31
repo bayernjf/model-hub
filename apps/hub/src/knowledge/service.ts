@@ -1,5 +1,6 @@
 import { chunkText, estimateTokens } from './chunker.js';
 import { ValidationError } from '../validation.js';
+import { cosineSimilarity, parseEmbedding } from './vector.js';
 import type {
   ChunkInsert,
   DocumentRecord,
@@ -109,7 +110,15 @@ export class KnowledgeService {
       throw new ValidationError('text', 'text has no content after trimming');
     }
 
-    const vectors = await ports.embed(pieces);
+    let vectors: number[][];
+    try {
+      vectors = await ports.embed(pieces);
+    } catch (err) {
+      if (err instanceof EmbeddingError) throw err;
+      throw new EmbeddingError(
+        `embedding failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     if (vectors.length !== pieces.length) {
       throw new EmbeddingError(
         `embedding count mismatch: sent ${pieces.length}, got ${vectors.length}`,
@@ -150,5 +159,95 @@ export class KnowledgeService {
 
   deleteDocument(owner: string, id: string): boolean {
     return this.deps.repo.deleteDocument(id, owner);
+  }
+
+  // Vector top-k over the owner's chunks (brute-force in-memory cosine),
+  // optional LLM rerank and grounded answer. Rerank and answer are fail-soft:
+  // any failure keeps the pure vector order / null answer.
+  async query(owner: string, input: QueryInput): Promise<QueryOutcome> {
+    const ports = await this.requirePorts();
+    const topK = input.topK ?? DEFAULT_TOP_K;
+    if (!Number.isInteger(topK) || topK < 1 || topK > MAX_TOP_K) {
+      throw new ValidationError('top_k', `top_k must be 1..${MAX_TOP_K}`);
+    }
+    const queryText = input.query.trim();
+    if (queryText.length === 0) {
+      throw new ValidationError('query', 'query must not be empty');
+    }
+
+    let queryVector: number[] | undefined;
+    try {
+      queryVector = (await ports.embed([queryText]))[0];
+    } catch (err) {
+      throw new EmbeddingError(
+        `query embedding failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (!queryVector || queryVector.length === 0) {
+      throw new EmbeddingError('query embedding returned an empty vector');
+    }
+
+    const scored = this.deps.repo
+      .listEmbeddedChunks(owner)
+      .map((row) => {
+        const embedding = row.embedding ? parseEmbedding(row.embedding) : null;
+        return {
+          row,
+          score: embedding ? cosineSimilarity(queryVector!, embedding) : -1,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+    let top = scored.slice(0, topK);
+
+    let reranked = false;
+    if (input.rerank !== false && top.length > 1 && ports.rerank) {
+      try {
+        const scores = await ports.rerank(
+          queryText,
+          top.map((t) => t.row.content),
+        );
+        if (scores.length === top.length) {
+          // Stable sort on the rerank score; ties keep the vector order.
+          top = top
+            .map((entry, index) => ({ entry, index, rerankScore: scores[index] }))
+            .sort(
+              (a, b) =>
+                (b.rerankScore as number) - (a.rerankScore as number) ||
+                a.index - b.index,
+            )
+            .map((x) => x.entry);
+          reranked = true;
+        }
+      } catch {
+        reranked = false; // fail-soft: keep the vector order
+      }
+    }
+
+    let answer: string | null = null;
+    if (ports.answer && top.length > 0) {
+      try {
+        answer = await ports.answer(
+          queryText,
+          top.map((t) => t.row.content),
+        );
+      } catch {
+        answer = null; // fail-soft: citations remain useful without an answer
+      }
+    }
+
+    return {
+      query: queryText,
+      top_k: topK,
+      answer,
+      reranked,
+      citations: top.map((t) => ({
+        chunk_id: t.row.id,
+        doc_id: t.row.doc_id,
+        title: t.row.doc_title,
+        position: t.row.position,
+        score: t.score,
+        content: t.row.content,
+      })),
+    };
   }
 }
