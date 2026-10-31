@@ -71,8 +71,18 @@ export interface CostAggregateRow {
   calls: number;
   input_tokens: number;
   output_tokens: number;
+  reasoning_tokens: number;
+  cache_read_tokens: number;
   quantity: number;
   cost_micros: number;
+}
+
+// Optional inclusive time window for the cost dashboard aggregation. Bounds
+// are UTC ISO-8601 strings compared lexicographically against the stored ts
+// column (all reported ts values are normalized "…Z" strings).
+export interface CostAggregateWindow {
+  from?: string;
+  to?: string;
 }
 
 export class UsageRepository {
@@ -156,7 +166,21 @@ export class UsageRepository {
   // Raw aggregation for the read-only cost dashboard (W7-4). Groups by project
   // slug × billing_source × day × model. byok rows carry no cost (owner does
   // not pay for user keys); their volume is still summed for display.
-  aggregate(): CostAggregateRow[] {
+  // reasoning_tokens may be NULL per row (non-reasoning models); SUM skips
+  // NULLs and COALESCE keeps all-empty groups at zero.
+  aggregate(window?: CostAggregateWindow): CostAggregateRow[] {
+    const conditions: string[] = [];
+    const params: string[] = [];
+    if (window?.from) {
+      conditions.push('u.ts >= ?');
+      params.push(window.from);
+    }
+    if (window?.to) {
+      conditions.push('u.ts <= ?');
+      params.push(window.to);
+    }
+    const where =
+      conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     return this.db
       .prepare(
         `SELECT p.slug AS project,
@@ -166,14 +190,17 @@ export class UsageRepository {
                 COUNT(*) AS calls,
                 COALESCE(SUM(u.input_tokens), 0) AS input_tokens,
                 COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(u.reasoning_tokens), 0) AS reasoning_tokens,
+                COALESCE(SUM(u.cache_read_tokens), 0) AS cache_read_tokens,
                 COALESCE(SUM(u.quantity), 0) AS quantity,
                 COALESCE(SUM(u.cost_micros), 0) AS cost_micros
          FROM usage_events u
          JOIN projects p ON p.id = u.project_id
+         ${where}
          GROUP BY p.slug, u.billing_source, date(u.ts), u.model
          ORDER BY day DESC, project ASC, model ASC`,
       )
-      .all() as unknown as CostAggregateRow[];
+      .all(...params) as unknown as CostAggregateRow[];
   }
 }
 
