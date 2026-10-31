@@ -44,6 +44,13 @@ export interface HubConfig {
   /** Text alias used to synthesize grounded answers; unset returns
    * citations only. */
   knowledgeAnswerAlias?: string;
+  /** Webhook URL that receives budget watermark alerts (80%/100% of an
+   * assignment's daily budget). Unset disables budget alerting entirely. */
+  budgetWebhookUrl?: string;
+  /** HMAC-SHA256 secret used to sign the budget alert webhook body
+   * (x-hub-signature header). Optional; strongly recommended whenever the
+   * URL is set. */
+  budgetWebhookSecret?: string;
 }
 
 const DEFAULT_PORT = 8791;
@@ -107,6 +114,12 @@ export function loadConfig(
       : {}),
     ...(env.KNOWLEDGE_ANSWER_ALIAS
       ? { knowledgeAnswerAlias: env.KNOWLEDGE_ANSWER_ALIAS }
+      : {}),
+    ...(env.HUB_BUDGET_WEBHOOK_URL
+      ? { budgetWebhookUrl: env.HUB_BUDGET_WEBHOOK_URL }
+      : {}),
+    ...(env.HUB_BUDGET_WEBHOOK_SECRET
+      ? { budgetWebhookSecret: env.HUB_BUDGET_WEBHOOK_SECRET }
       : {}),
   };
 }

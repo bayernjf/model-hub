@@ -4,6 +4,9 @@ import {
   type AppEnv,
 } from '../../auth/middleware.js';
 import type { HubConfig } from '../../config.js';
+import type { AssignmentRepository } from '../../repositories/assignments.js';
+import type { ModelRepository } from '../../repositories/models.js';
+import type { ProjectRepository } from '../../repositories/projects.js';
 import type {
   CostAggregateRow,
   CostAggregateWindow,
@@ -14,7 +17,8 @@ import { ValidationError } from '../../validation.js';
 // Read-only cross-project cost dashboard (W7-4). Builtin spend is owner cost
 // (cost_micros computed at report time from the assigned model's pricing);
 // BYOK spend is the user's own money, so we only surface its volume, never a
-// cost figure.
+// cost figure. W5-3 adds the per-assignment budget watermark (today's UTC
+// builtin spend vs daily_budget_micros) for budgeted assignments.
 
 interface CostCell {
   calls: number;
@@ -118,9 +122,81 @@ function validationResponse(c: Context, err: ValidationError) {
   );
 }
 
+export interface CostsRepoDeps {
+  assignmentRepo: AssignmentRepository;
+  modelRepo: ModelRepository;
+  projectRepo: ProjectRepository;
+}
+
+// Budget watermark rows: one per assignment with a configured daily budget.
+// Spent is today's UTC builtin cost for the assignment regardless of the
+// request window — a watermark is a "right now" reading, not a historical one.
+export function budgetWatermarkRows(
+  deps: CostsRepoDeps,
+  usageRepo: UsageRepository,
+): Array<{
+  project: string;
+  assignment_id: string;
+  alias: string | null;
+  role: string;
+  model: string;
+  spent_micros: number;
+  daily_budget_micros: number;
+  percent: number | null;
+}> {
+  const rows: Array<{
+    project: string;
+    assignment_id: string;
+    alias: string | null;
+    role: string;
+    model: string;
+    spent_micros: number;
+    daily_budget_micros: number;
+    percent: number | null;
+  }> = [];
+  const projectSlugs = new Map<string, string>();
+  const projectName = (id: string): string => {
+    let slug = projectSlugs.get(id);
+    if (!slug) {
+      slug = deps.projectRepo.get(id)?.slug ?? id;
+      projectSlugs.set(id, slug);
+    }
+    return slug;
+  };
+
+  // One aggregation for all projects; keyed by "projectId/assignmentId".
+  const spentToday = new Map<string, number>();
+  for (const row of usageRepo.spendTodayByAssignment()) {
+    if (row.assignment_id) {
+      spentToday.set(`${row.project_id}/${row.assignment_id}`, row.cost_micros);
+    }
+  }
+
+  for (const assignment of deps.assignmentRepo.listAll()) {
+    const budget = assignment.daily_budget_micros;
+    if (budget === null) continue;
+    const model = deps.modelRepo.get(assignment.model_id);
+    const spent =
+      spentToday.get(`${assignment.project_id}/${assignment.id}`) ?? 0;
+    rows.push({
+      project: projectName(assignment.project_id),
+      assignment_id: assignment.id,
+      alias: assignment.alias,
+      role: assignment.role,
+      model: model?.model ?? assignment.model_id,
+      spent_micros: spent,
+      daily_budget_micros: budget,
+      percent:
+        budget > 0 ? Math.round((spent / budget) * 10000) / 100 : spent > 0 ? null : 0,
+    });
+  }
+  return rows;
+}
+
 export function adminCostRoutes(
   config: HubConfig,
   usageRepo: UsageRepository,
+  repos: CostsRepoDeps,
 ): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
   routes.use('*', requireAdmin(config));
@@ -177,6 +253,7 @@ export function adminCostRoutes(
         const [project, model] = key.split(' / ');
         return { project, model, ...s };
       }),
+      budgets: budgetWatermarkRows(repos, usageRepo),
     });
   });
 

@@ -59,6 +59,25 @@ paths:
           description: Catalog unchanged; reuse the cached projection.
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /pub/v1/usage/summary:
+    get:
+      tags: [reporting]
+      summary: Per-assignment budget readout for the current UTC day.
+      description: >
+        Aggregates today's (UTC) builtin usage cost per assignment and compares
+        it with the assignment's daily budget. BYOK traffic never counts toward
+        spend (the owner does not pay for user keys). The readout is eventually
+        consistent: it reflects usage reports accepted by the hub so far.
+      operationId: getUsageSummary
+      responses:
+        "200":
+          description: Budget watermark per assignment.
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/usage-summary-response.json
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /pub/v1/usage:
     post:
       tags: [reporting]
@@ -66,7 +85,9 @@ paths:
       description: >
         Append-only ingestion of raw usage units (no prompt content). The hub
         computes cost from the prices issued at pull time. Failures must not
-        break the caller; clients should report asynchronously.
+        break the caller; clients should report asynchronously. Set
+        degraded=true when the call was rerouted to a fallback assignment
+        after the requested primary crossed its daily budget.
       operationId: reportUsage
       requestBody:
         required: true

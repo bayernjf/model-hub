@@ -24,6 +24,9 @@ export const UsageReportSchema = z
     quantity: z.number().nonnegative().nullable().optional(),
     http_status: z.number().int().min(100).max(599),
     cached: z.boolean(),
+    // True when the kit rerouted the call to a fallback after the requested
+    // primary crossed its daily budget (FR6-2). Older kit builds omit it.
+    degraded: z.boolean().optional(),
     ts: z.string().datetime({ offset: true }),
   })
   .strict();

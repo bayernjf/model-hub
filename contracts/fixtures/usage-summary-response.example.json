@@ -1,0 +1,35 @@
+{
+  "project": "zeus",
+  "day": "2026-10-27",
+  "generated_at": "2026-10-27T10:02:00Z",
+  "models": [
+    {
+      "assignment_id": "asn_0001noul",
+      "alias": "noul",
+      "role": "primary",
+      "model": "ark-code-latest",
+      "spent_micros": 1200000,
+      "daily_budget_micros": 5000000,
+      "percent": 24
+    },
+    {
+      "assignment_id": "asn_0002score",
+      "alias": "score",
+      "role": "primary",
+      "model": "doubao-seed-1-6-250615",
+      "spent_micros": 3100000,
+      "daily_budget_micros": 3000000,
+      "percent": 103.33
+    },
+    {
+      "assignment_id": "asn_0003image",
+      "alias": null,
+      "role": "fallback",
+      "model": "doubao-seedream-4-0-250828",
+      "spent_micros": 0,
+      "daily_budget_micros": null,
+      "percent": null
+    }
+  ],
+  "unassigned_spent_micros": 0
+}

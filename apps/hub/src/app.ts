@@ -10,6 +10,7 @@ import { SlidingWindowRateLimiter } from './rate-limit.js';
 import { RevisionService } from './revision.js';
 import { ProjectionService } from './projection.js';
 import {
+  BudgetAlertRepository,
   HealthCheckRepository,
   UsageRepository,
 } from './repositories/reporting.js';
@@ -32,6 +33,8 @@ import { knowledgeRoutes } from './routes/knowledge.js';
 // Test seams: swap the production model-kit ports for fakes.
 export interface AppOverrides {
   knowledgePorts?: KnowledgePortsResolver;
+  // Fetch impl used for outbound budget alert webhooks (tests).
+  budgetAlertFetch?: typeof fetch;
 }
 
 // Build the Hono app with the shared config and database connection. The
@@ -58,6 +61,7 @@ export function createApp(
   );
   const usageRepo = new UsageRepository(db);
   const healthRepo = new HealthCheckRepository(db);
+  const alertRepo = new BudgetAlertRepository(db);
 
   // Knowledge subdomain (M3): owner-scoped documents/chunks with embedding
   // through model-kit ports (faked via overrides in tests).
@@ -95,7 +99,11 @@ export function createApp(
     '/api/admin',
     adminHealthRoutes(config, healthRepo, revision),
   );
-  app.route('/api/admin', adminCostRoutes(config, usageRepo));
+  app.route('/api/admin', adminCostRoutes(config, usageRepo, {
+    assignmentRepo,
+    modelRepo,
+    projectRepo,
+  }));
   app.route(
     '/api/admin',
     adminKnowledgeRoutes(config, projectRepo, knowledge),
@@ -108,6 +116,16 @@ export function createApp(
       assignmentRepo,
       usageRepo,
       healthRepo,
+      alertRepo,
+      budgetAlertConfig: {
+        ...(config.budgetWebhookUrl ? { url: config.budgetWebhookUrl } : {}),
+        ...(config.budgetWebhookSecret
+          ? { secret: config.budgetWebhookSecret }
+          : {}),
+      },
+      ...(overrides.budgetAlertFetch
+        ? { budgetAlertFetch: overrides.budgetAlertFetch }
+        : {}),
       projection,
       revision,
     }),

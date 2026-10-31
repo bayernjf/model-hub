@@ -49,6 +49,10 @@
       "maximum": 599
     },
     "cached": { "type": "boolean" },
+    "degraded": {
+      "type": "boolean",
+      "description": "True when the project-side kit rerouted the call to a fallback assignment because the requested primary crossed its daily budget (FR6-2)."
+    },
     "ts": { "$ref": "common.json#/$defs/timestamp" }
   }
 }

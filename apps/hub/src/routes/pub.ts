@@ -4,11 +4,16 @@ import type { ProjectRepository } from '../repositories/projects.js';
 import type { ModelRepository } from '../repositories/models.js';
 import type { AssignmentRepository } from '../repositories/assignments.js';
 import {
+  BudgetAlertRepository,
   HealthCheckRepository,
   UsageRepository,
 } from '../repositories/reporting.js';
 import type { ProjectionService } from '../projection.js';
 import type { RevisionService } from '../revision.js';
+import {
+  evaluateBudgetWatermarks,
+  type BudgetAlertWebhookConfig,
+} from '../budget-alerts.js';
 import { computeCostMicros } from '../cost.js';
 import {
   HealthCheckReportSchema,
@@ -28,6 +33,9 @@ export interface PubDeps {
   assignmentRepo: AssignmentRepository;
   usageRepo: UsageRepository;
   healthRepo: HealthCheckRepository;
+  alertRepo: BudgetAlertRepository;
+  budgetAlertConfig: BudgetAlertWebhookConfig;
+  budgetAlertFetch?: typeof fetch;
   projection: ProjectionService;
   revision: RevisionService;
 }
@@ -39,6 +47,9 @@ export function pubRoutes(deps: PubDeps): Hono {
     assignmentRepo,
     usageRepo,
     healthRepo,
+    alertRepo,
+    budgetAlertConfig,
+    budgetAlertFetch,
     projection,
     revision,
   } = deps;
@@ -75,6 +86,59 @@ export function pubRoutes(deps: PubDeps): Hono {
     });
   });
 
+  // Per-assignment budget readout for the current UTC day (W5-1). Spent
+  // builtin cost_micros per assignment against its daily budget; BYOK spend
+  // never counts (cost_micros stays null for user-key traffic). The readout
+  // is eventually consistent: it reflects reports accepted by the hub so far.
+  routes.get('/pub/v1/usage/summary', (c) => {
+    const token = bearerToken(c);
+    if (!token) {
+      return c.json({ error: { code: 'unauthorized' } }, 401);
+    }
+    const auth = projectRepo.authenticateToken(token);
+    if (!auth) {
+      return c.json({ error: { code: 'unauthorized' } }, 401);
+    }
+
+    const spends = usageRepo.spendTodayByAssignment(auth.project.id);
+    const spendByAssignment = new Map<string, number>();
+    let totalToday = 0;
+    for (const row of spends) {
+      totalToday += row.cost_micros;
+      if (row.assignment_id) spendByAssignment.set(row.assignment_id, row.cost_micros);
+    }
+
+    let matched = 0;
+    const models = assignmentRepo.listByProject(auth.project.id).map((a) => {
+      const model = modelRepo.get(a.model_id);
+      const spent = spendByAssignment.get(a.id) ?? 0;
+      matched += spent;
+      const budget = a.daily_budget_micros;
+      return {
+        assignment_id: a.id,
+        alias: a.alias,
+        role: a.role,
+        model: model?.model ?? a.model_id,
+        spent_micros: spent,
+        daily_budget_micros: budget,
+        percent:
+          budget !== null && budget > 0
+            ? Math.round((spent / budget) * 10000) / 100
+            : null,
+      };
+    });
+
+    return c.json({
+      project: auth.project.slug,
+      day: new Date().toISOString().slice(0, 10),
+      generated_at: new Date().toISOString(),
+      models,
+      // Builtin spend of the day not attributable to a current assignment
+      // (rows reported without an assignment, or one since replaced).
+      unassigned_spent_micros: totalToday - matched,
+    });
+  });
+
   // Usage reporting. Append-only; failures still record with zero units.
   routes.post('/pub/v1/usage', async (c) => {
     const token = bearerToken(c);
@@ -99,6 +163,7 @@ export function pubRoutes(deps: PubDeps): Hono {
 
     // Verify the assignment belongs to this project when supplied.
     let assignmentValid = false;
+    let assignmentForSpend: string | null = null;
     let modelForCost: ReturnType<ModelRepository['get']> = null;
     if (r.assignment_id) {
       const assignment = assignmentRepo
@@ -106,6 +171,7 @@ export function pubRoutes(deps: PubDeps): Hono {
         .find((a) => a.id === r.assignment_id);
       if (assignment) {
         assignmentValid = true;
+        assignmentForSpend = assignment.id;
         modelForCost = modelRepo.get(assignment.model_id);
       }
     }
@@ -140,8 +206,30 @@ export function pubRoutes(deps: PubDeps): Hono {
       http_status: r.http_status,
       cached: r.cached,
       cost_micros: costMicros,
+      degraded: r.degraded ?? false,
       ts: r.ts,
     });
+
+    // Budget watermark evaluation (FR6-3): only builtin reports grow owner
+    // spend, and only the assignment that just received spend can cross a
+    // threshold. Fire-and-forget; never blocks or fails the report.
+    if (costMicros !== null && assignmentForSpend) {
+      evaluateBudgetWatermarks(
+        {
+          config: budgetAlertConfig,
+          assignmentRepo,
+          modelRepo,
+          usageRepo,
+          alertRepo,
+          ...(budgetAlertFetch ? { fetchImpl: budgetAlertFetch } : {}),
+        },
+        {
+          projectId: auth.project.id,
+          projectSlug: auth.project.slug,
+          assignmentId: assignmentForSpend,
+        },
+      );
+    }
 
     // Never block the caller's workflow on reporting.
     return c.json({ accepted: true });
