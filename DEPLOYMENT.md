@@ -37,6 +37,12 @@ hub 宕机不影响已缓存调用。
    `KNOWLEDGE_ANSWER_ALIAS`；不配则知识库 ingest/query 返回 503。
    详见 `docs/knowledge-api.md`。
 
+   成本治理告警（M5，可选）：要接收预算水位告警（某分配当日用量达
+   日预算 80%/100% 时各至多一次），配 `HUB_BUDGET_WEBHOOK_URL`（接收端
+   URL，不配则整层告警跳过）与 `HUB_BUDGET_WEBHOOK_SECRET`（HMAC-SHA256
+   签名密钥，接收端按 `x-hub-signature: sha256=<hex>` 校验原始 body）。
+   详见 `docs/cost-governance.md`。
+
 2. 构建并启动：
 
    ```bash
