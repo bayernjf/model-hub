@@ -13,6 +13,10 @@ import {
   HealthCheckRepository,
   UsageRepository,
 } from './repositories/reporting.js';
+import { KnowledgeRepository } from './knowledge/repository.js';
+import { KnowledgeService } from './knowledge/service.js';
+import type { KnowledgePortsResolver } from './knowledge/service.js';
+import { createKnowledgePortsResolver } from './knowledge/ports.js';
 import { healthRoutes } from './routes/health.js';
 import { providerRoutes } from './routes/admin/providers.js';
 import { projectRoutes } from './routes/admin/projects.js';
@@ -20,12 +24,23 @@ import { modelRoutes } from './routes/admin/models.js';
 import { assignmentRoutes } from './routes/admin/assignments.js';
 import { adminHealthRoutes } from './routes/admin/health.js';
 import { adminCostRoutes } from './routes/admin/costs.js';
+import { adminKnowledgeRoutes } from './routes/admin/knowledge.js';
 import { sessionRoutes } from './routes/admin/session.js';
 import { pubRoutes } from './routes/pub.js';
+import { knowledgeRoutes } from './routes/knowledge.js';
+
+// Test seams: swap the production model-kit ports for fakes.
+export interface AppOverrides {
+  knowledgePorts?: KnowledgePortsResolver;
+}
 
 // Build the Hono app with the shared config and database connection. The
 // factory (not a bound server) lets tests exercise app.request().
-export function createApp(config: HubConfig, db: DatabaseSync): Hono {
+export function createApp(
+  config: HubConfig,
+  db: DatabaseSync,
+  overrides: AppOverrides = {},
+): Hono {
   const app = new Hono();
 
   const keyRing = buildKeyRing(config.masterKey);
@@ -43,6 +58,16 @@ export function createApp(config: HubConfig, db: DatabaseSync): Hono {
   );
   const usageRepo = new UsageRepository(db);
   const healthRepo = new HealthCheckRepository(db);
+
+  // Knowledge subdomain (M3): owner-scoped documents/chunks with embedding
+  // through model-kit ports (faked via overrides in tests).
+  const knowledgeRepo = new KnowledgeRepository(db);
+  const knowledge = new KnowledgeService({
+    repo: knowledgeRepo,
+    ports: overrides.knowledgePorts ?? createKnowledgePortsResolver(config),
+  });
+  const knowledgeIngestLimiter = new SlidingWindowRateLimiter(30, 3_600_000);
+  const knowledgeQueryLimiter = new SlidingWindowRateLimiter(120, 3_600_000);
 
   app.route('/', healthRoutes(db));
   app.route('/api/admin', sessionRoutes(config, db));
@@ -72,6 +97,10 @@ export function createApp(config: HubConfig, db: DatabaseSync): Hono {
   );
   app.route('/api/admin', adminCostRoutes(config, usageRepo));
   app.route(
+    '/api/admin',
+    adminKnowledgeRoutes(config, projectRepo, knowledge),
+  );
+  app.route(
     '/',
     pubRoutes({
       projectRepo,
@@ -81,6 +110,15 @@ export function createApp(config: HubConfig, db: DatabaseSync): Hono {
       healthRepo,
       projection,
       revision,
+    }),
+  );
+  app.route(
+    '/',
+    knowledgeRoutes({
+      projectRepo,
+      knowledge,
+      ingestLimiter: knowledgeIngestLimiter,
+      queryLimiter: knowledgeQueryLimiter,
     }),
   );
 

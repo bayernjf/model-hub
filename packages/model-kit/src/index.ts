@@ -279,7 +279,8 @@ export class ModelKit {
     this.reportUsage(alias, model, usage, 200);
   }
 
-  // Embed text into vectors (synchronous).
+  // Embed text into vectors (synchronous). Reports the provider-echoed
+  // input token count so embedding spend lands in the hub cost ledger.
   async embed(
     alias: string,
     input: string | string[],
@@ -290,7 +291,14 @@ export class ModelKit {
       { model, input, signal: opts?.signal },
       this.fetchImpl,
     );
-    this.reportUsage(alias, model, null, result.httpStatus);
+    this.reportUsage(
+      alias,
+      model,
+      result.usage
+        ? { prompt_tokens: result.usage.prompt_tokens, completion_tokens: 0 }
+        : null,
+      result.httpStatus,
+    );
     return result;
   }
 
@@ -423,7 +431,7 @@ export type {
 } from './driver.js';
 
 export { embedJson, generateImage, generateVideo } from './media.js';
-export type { EmbedResult, ImageResult, VideoResult } from './media.js';
+export type { EmbedResult, EmbedUsage, ImageResult, VideoResult } from './media.js';
 
 export { synthesize } from './audio.js';
 export type { TtsResult } from './audio.js';

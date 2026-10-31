@@ -31,6 +31,19 @@ export interface HubConfig {
   dataDir: string;
   /** Disable admin auth for local development only (never on a shared host). */
   devNoAuth: boolean;
+  /** Hub base URL the knowledge subdomain pulls its catalog from (usually
+   * this hub itself over loopback). */
+  knowledgeHubUrl: string;
+  /** Project token the knowledge subdomain consumes aliases with. Unset
+   * means the knowledge ingest/query endpoints stay disabled. */
+  knowledgeProjectToken?: string;
+  /** Embedding alias used for document and query vectors. */
+  knowledgeEmbedAlias: string;
+  /** Text alias used to rerank vector hits; unset skips reranking. */
+  knowledgeRerankAlias?: string;
+  /** Text alias used to synthesize grounded answers; unset returns
+   * citations only. */
+  knowledgeAnswerAlias?: string;
 }
 
 const DEFAULT_PORT = 8791;
@@ -83,5 +96,17 @@ export function loadConfig(
     port,
     dataDir,
     devNoAuth,
+    knowledgeHubUrl:
+      env.KNOWLEDGE_HUB_URL || `http://127.0.0.1:${port}`,
+    ...(env.KNOWLEDGE_PROJECT_TOKEN
+      ? { knowledgeProjectToken: env.KNOWLEDGE_PROJECT_TOKEN }
+      : {}),
+    knowledgeEmbedAlias: env.KNOWLEDGE_EMBED_ALIAS || 'embed',
+    ...(env.KNOWLEDGE_RERANK_ALIAS
+      ? { knowledgeRerankAlias: env.KNOWLEDGE_RERANK_ALIAS }
+      : {}),
+    ...(env.KNOWLEDGE_ANSWER_ALIAS
+      ? { knowledgeAnswerAlias: env.KNOWLEDGE_ANSWER_ALIAS }
+      : {}),
   };
 }

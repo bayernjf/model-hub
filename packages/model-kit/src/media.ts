@@ -26,8 +26,15 @@ function sleep(ms: number): Promise<void> {
 // Embedding
 // ---------------------------------------------------------------------------
 
+export interface EmbedUsage {
+  prompt_tokens: number;
+  total_tokens: number;
+}
+
 export interface EmbedResult {
   vectors: number[][];
+  /** Token usage echoed by the provider; null when the response omits it. */
+  usage: EmbedUsage | null;
   httpStatus: number;
   raw: unknown;
 }
@@ -36,6 +43,20 @@ export interface EmbedCall {
   model: ResolvedModel;
   input: string | string[];
   signal?: AbortSignal | undefined;
+}
+
+// Extract the usage block from an embeddings response. Providers that skip
+// it (or return malformed shapes) yield null so callers can still proceed.
+function embedUsage(raw: { usage?: { prompt_tokens?: unknown; total_tokens?: unknown } }): EmbedUsage | null {
+  const usage = raw.usage;
+  if (!usage || typeof usage.prompt_tokens !== 'number') return null;
+  return {
+    prompt_tokens: usage.prompt_tokens,
+    total_tokens:
+      typeof usage.total_tokens === 'number'
+        ? usage.total_tokens
+        : usage.prompt_tokens,
+  };
 }
 
 export async function embedJson(
@@ -54,9 +75,11 @@ export async function embedJson(
   });
   const raw = (await res.json()) as {
     data?: Array<{ embedding?: number[] }>;
+    usage?: { prompt_tokens?: unknown; total_tokens?: unknown };
   };
   return {
     vectors: (raw.data ?? []).map((d) => d.embedding ?? []),
+    usage: embedUsage(raw),
     httpStatus: res.status,
     raw,
   };

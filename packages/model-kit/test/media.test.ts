@@ -42,6 +42,43 @@ describe('embed driver', () => {
     );
     expect(result.vectors).toEqual([[0.1, 0.2, 0.3]]);
     expect(result.httpStatus).toBe(200);
+    // Responses without a usage block still succeed, with null usage.
+    expect(result.usage).toBeNull();
+  });
+
+  it('surfaces the echoed usage block for cost reporting', async () => {
+    const fake = (async () =>
+      new Response(
+        JSON.stringify({
+          data: [{ embedding: [1, 0] }, { embedding: [0, 1] }],
+          usage: { prompt_tokens: 42, total_tokens: 42 },
+        }),
+        { status: 200 },
+      )) as typeof fetch;
+    const result = await embedJson(
+      {
+        model: model({ modalities: ['embedding'] }),
+        input: ['refund policy', 'shipping policy'],
+      },
+      fake,
+    );
+    expect(result.usage).toEqual({ prompt_tokens: 42, total_tokens: 42 });
+  });
+
+  it('treats a malformed usage block as absent', async () => {
+    const fake = (async () =>
+      new Response(
+        JSON.stringify({
+          data: [{ embedding: [1] }],
+          usage: { prompt_tokens: 'many' },
+        }),
+        { status: 200 },
+      )) as typeof fetch;
+    const result = await embedJson(
+      { model: model({ modalities: ['embedding'] }), input: 'hi' },
+      fake,
+    );
+    expect(result.usage).toBeNull();
   });
 });
 

@@ -35,7 +35,8 @@ model-hub/
 │       ├── src/
 │       │   ├── server.ts        # 启动入口（绑定 HUB_PORT）
 │       │   ├── app.ts           # 组装 Hono app（供测试）
-│       │   ├── routes/          # admin/ 与 pub/ 路由
+│       │   ├── routes/          # admin/ 与 pub/ 路由（含 knowledge API）
+│       │   ├── knowledge/       # 知识库/RAG 子域：chunker/repository/service/ports（M3）
 │       │   ├── db/              # 迁移与 repository（M1）
 │       │   ├── crypto/          # 信封加密（M1）
 │       │   ├── presets/         # 预置清单（M2）
@@ -74,6 +75,9 @@ npm run check:all        # typecheck + lint + test + build 串行
 - 浏览器/进程公开：无（hub 不向浏览器暴露 key）。
 - 服务端：`HUB_MASTER_KEY`、`HUB_ADMIN_PASSWORD`、`HUB_PORT`、
   `HUB_DATA_DIR`、`HUB_DEV_NO_AUTH`（见 `apps/hub/.env.example`）。
+- 知识库（可选，M3）：`KNOWLEDGE_PROJECT_TOKEN`、`KNOWLEDGE_HUB_URL`、
+  `KNOWLEDGE_EMBED_ALIAS`、`KNOWLEDGE_RERANK_ALIAS`、`KNOWLEDGE_ANSWER_ALIAS`；
+  token 未设时 ingest/query 返回 503。接口契约见 `docs/knowledge-api.md`。
 - 真实 key 只经管理台 UI 录入加密入库，或放 gitignored 的 `.env.local`；
   禁止写入文档、提交历史、日志、构建产物。
 

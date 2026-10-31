@@ -255,3 +255,78 @@ describe('L3 and L4 tests', () => {
     kit.stop();
   });
 });
+
+describe('embedding usage reporting', () => {
+  // The hub must be able to price embedding calls, so ModelKit.embed has to
+  // forward the provider-echoed prompt_tokens in its usage report (fake hub
+  // captures the POST body; no real provider or hub is contacted).
+  it('reports the echoed input tokens after an embed call', async () => {
+    const usageBodies: unknown[] = [];
+    const embedCatalog: CatalogResponse = {
+      project: 'kit-test',
+      revision: 3,
+      fetched_at: '2026-01-01T00:00:00Z',
+      models: [
+        {
+          assignment_id: 'asn_emb1',
+          alias: 'embed',
+          role: 'primary',
+          modalities: ['embedding'],
+          model: 'doubao-embedding-vision',
+          litellm_id: null,
+          display_name: null,
+          protocol: 'openai-compatible',
+          base_url: 'https://provider.example/v1',
+          api_key: 'vendor-key',
+          endpoints: { embeddings: '/embeddings' },
+          adapter: null,
+          context_window: null,
+          supports_json: false,
+          supports_stream: false,
+          daily_budget_micros: null,
+          pricing: null,
+        },
+      ],
+    };
+    const mock = (async (input, init) => {
+      const url = String(input);
+      if (url.includes('/pub/v1/models')) {
+        return new Response(JSON.stringify(embedCatalog), { status: 200 });
+      }
+      if (url.endsWith('/embeddings')) {
+        return new Response(
+          JSON.stringify({
+            data: [{ embedding: [0.5, 0.5] }, { embedding: [0.25, 0.75] }],
+            usage: { prompt_tokens: 57, total_tokens: 57 },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/pub/v1/usage')) {
+        usageBodies.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ accepted: true }), {
+          status: 200,
+        });
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+
+    const kit = await initModelKit({
+      token: 'tok',
+      hubUrl: 'https://hub.local',
+      cachePath: cachePath(),
+      fetch: mock,
+    });
+    const result = await kit.embed('embed', ['a', 'b']);
+    expect(result.vectors).toEqual([[0.5, 0.5], [0.25, 0.75]]);
+    // Allow the fire-and-forget usage report to flush before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(usageBodies).toHaveLength(1);
+    const usage = usageBodies[0] as Record<string, unknown>;
+    expect(usage['input_tokens']).toBe(57);
+    expect(usage['model']).toBe('doubao-embedding-vision');
+    expect(usage['assignment_id']).toBe('asn_emb1');
+    kit.stop();
+  });
+});
