@@ -31,6 +31,12 @@ hub 宕机不影响已缓存调用。
 
    生产**不要**设 `HUB_DEV_NO_AUTH`。
 
+   知识库（M3，可选）：要启用文档 ingest/问答，再配
+   `KNOWLEDGE_PROJECT_TOKEN`（持有相关 alias 分配的消费项目 token）与
+   `KNOWLEDGE_EMBED_ALIAS` / `KNOWLEDGE_RERANK_ALIAS` /
+   `KNOWLEDGE_ANSWER_ALIAS`；不配则知识库 ingest/query 返回 503。
+   详见 `docs/knowledge-api.md`。
+
 2. 构建并启动：
 
    ```bash
