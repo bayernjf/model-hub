@@ -40,8 +40,8 @@ export interface KnowledgeRouteDeps {
 }
 
 // Map service errors to API responses; unknown errors rethrow into the
-// app-level 500 handler.
-function handleError(c: Context, err: unknown): Response {
+// app-level 500 handler. Shared with the admin console routes.
+export function handleKnowledgeError(c: Context, err: unknown): Response {
   if (err instanceof KnowledgeNotConfiguredError) {
     return c.json(
       { error: { code: 'knowledge_not_configured', message: err.message } },
@@ -121,7 +121,7 @@ export function knowledgeRoutes(deps: KnowledgeRouteDeps): Hono<KnowledgeEnv> {
       });
       return c.json(result, 201);
     } catch (err) {
-      return handleError(c, err);
+      return handleKnowledgeError(c, err);
     }
   });
 
@@ -147,7 +147,7 @@ export function knowledgeRoutes(deps: KnowledgeRouteDeps): Hono<KnowledgeEnv> {
       });
       return c.json(outcome);
     } catch (err) {
-      return handleError(c, err);
+      return handleKnowledgeError(c, err);
     }
   });
 

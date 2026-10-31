@@ -11,7 +11,9 @@ import { MAX_TOP_K } from './service.js';
 
 const SUPPORTED_MIMES = ['text/plain', 'text/markdown'] as const;
 
-export const KnowledgeIngestSchema = z
+// Base field sets (without .refine) so both the project-token schema and the
+// admin schema (with an explicit owner) can be derived from one source.
+const IngestFields = z
   .object({
     title: z.string().trim().min(1).max(300),
     text: z.string().min(1).max(200_000),
@@ -25,13 +27,32 @@ export const KnowledgeIngestSchema = z
       .optional(),
     chunk_overlap: z.number().int().min(0).optional(),
   })
-  .strict()
-  .refine(
-    (v) => (v.chunk_overlap ?? 0) < (v.chunk_size ?? DEFAULT_CHUNK_SIZE),
-    { message: 'chunk_overlap must be smaller than chunk_size', path: ['chunk_overlap'] },
-  );
+  .strict();
+
+const overlapFitsSize = (v: {
+  chunk_overlap?: number | undefined;
+  chunk_size?: number | undefined;
+}): boolean =>
+  (v.chunk_overlap ?? 0) < (v.chunk_size ?? DEFAULT_CHUNK_SIZE);
+
+const overlapError = {
+  message: 'chunk_overlap must be smaller than chunk_size',
+  path: ['chunk_overlap'] as PropertyKey[],
+};
+
+export const KnowledgeIngestSchema = IngestFields.refine(
+  overlapFitsSize,
+  overlapError,
+);
 
 export type KnowledgeIngestRequest = z.infer<typeof KnowledgeIngestSchema>;
+
+// Admin console variant: the owner project is chosen explicitly.
+export const AdminKnowledgeIngestSchema = IngestFields.extend({
+  owner: z.string().min(1),
+})
+  .strict()
+  .refine(overlapFitsSize, overlapError);
 
 export const KnowledgeQuerySchema = z
   .object({
@@ -42,5 +63,9 @@ export const KnowledgeQuerySchema = z
   .strict();
 
 export type KnowledgeQueryRequest = z.infer<typeof KnowledgeQuerySchema>;
+
+export const AdminKnowledgeQuerySchema = KnowledgeQuerySchema.extend({
+  owner: z.string().min(1),
+}).strict();
 
 export { SUPPORTED_MIMES };

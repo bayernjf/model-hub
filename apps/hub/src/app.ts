@@ -24,6 +24,7 @@ import { modelRoutes } from './routes/admin/models.js';
 import { assignmentRoutes } from './routes/admin/assignments.js';
 import { adminHealthRoutes } from './routes/admin/health.js';
 import { adminCostRoutes } from './routes/admin/costs.js';
+import { adminKnowledgeRoutes } from './routes/admin/knowledge.js';
 import { sessionRoutes } from './routes/admin/session.js';
 import { pubRoutes } from './routes/pub.js';
 import { knowledgeRoutes } from './routes/knowledge.js';
@@ -95,6 +96,10 @@ export function createApp(
     adminHealthRoutes(config, healthRepo, revision),
   );
   app.route('/api/admin', adminCostRoutes(config, usageRepo));
+  app.route(
+    '/api/admin',
+    adminKnowledgeRoutes(config, projectRepo, knowledge),
+  );
   app.route(
     '/',
     pubRoutes({
