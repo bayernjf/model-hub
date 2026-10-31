@@ -303,4 +303,30 @@ describe('L1 provider test route', () => {
     });
     expect(res.status).toBe(403);
   });
+
+  it('caps the vendor body echo for the owner and keeps it out of the audit trail', async () => {
+    // Tier0 review 2026-10-30 H2: error.detail intentionally echoes up to 300
+    // chars of the vendor response so the owner can repair dialect problems,
+    // but that text must stay owner-UI-only and never reach the audit trail.
+    const pid = await createProvider(t.app, cookie, { api_key: 'sk-real' });
+    const vendorLeak =
+      '{"error":{"message":"vendor internal: upstream pool 10.0.0.7 org_98_secret"' +
+      ' "trace":".'.padEnd(1000, 'x') + '"}}';
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(vendorLeak, { status: 500 })));
+    const res = await t.app.request(`/api/admin/providers/${pid}/test`, {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok: boolean; error?: { code: string; detail?: string } };
+    expect(data.ok).toBe(false);
+    expect(data.error?.code).toBe('server_error');
+    expect(data.error?.detail).toBeDefined();
+    expect((data.error?.detail ?? '').length).toBeLessThanOrEqual(300);
+    const rows = t.db
+      .prepare("SELECT detail FROM admin_audit WHERE action = 'provider.test'")
+      .all() as Array<{ detail: string | null }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].detail).toBeNull();
+  });
 });
