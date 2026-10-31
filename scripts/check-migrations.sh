@@ -16,6 +16,10 @@ expected_tables=(
   usage_events
   health_checks
   admin_audit
+  meta
+  login_attempts
+  documents
+  chunks
 )
 
 fail=0
@@ -35,10 +39,11 @@ while IFS= read -r file; do
   expected_number=$((expected_number + 1))
 done <<< "$files"
 
-# 2. Each file creates a table with IF NOT EXISTS.
+# 2. Each file either creates a table (IF NOT EXISTS) or alters an existing
+#    one; ALTER-only migrations (e.g. 009 adding a column) are allowed.
 while IFS= read -r file; do
-  if ! grep -q 'CREATE TABLE IF NOT EXISTS' "$MIGRATION_DIR/$file"; then
-    echo "FAIL: $file has no 'CREATE TABLE IF NOT EXISTS'"
+  if ! grep -qE 'CREATE TABLE IF NOT EXISTS|ALTER TABLE' "$MIGRATION_DIR/$file"; then
+    echo "FAIL: $file neither creates nor alters a table"
     fail=1
   fi
 done <<< "$files"
