@@ -2,6 +2,13 @@
  * L1 provider connection tests (hub -> vendor). Tests do not retry, time out
  * after 15s, and never send business data. Results use a single shape and a
  * fixed set of error codes so the UI can show actionable repair hints.
+ *
+ * Owner-boundary contract (Tier0 review 2026-10-30 H2): `error.detail` echoes
+ * at most 300 chars of the vendor response body on purpose, because that text
+ * is what lets the owner repair dialect/auth problems. It may be rendered to
+ * the authenticated owner only (the routes are requireOwner()); callers must
+ * NOT write TestResult into logs, audit entries or any other persistence —
+ * the audit trail records ok/failure only.
  */
 import type { ModelView } from './repositories/models.js';
 import { getPresetProvider } from './presets/index.js';
