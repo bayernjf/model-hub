@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import WebSocket from 'ws';
-import type { ResolvedModel } from './types.js';
+import type { DegradationInfo, ResolvedModel } from './types.js';
 
 // Automatic speech recognition (ASR) over the Volcano/ByteDance SAUC binary
 // protocol (Agent Plan). The handshake carries X-Api-Key / X-Api-Resource-Id;
@@ -316,6 +316,8 @@ export interface AsrResult {
   text: string;
   utterances: AsrUtterance[];
   frames: ParsedAsrFrame[];
+  /** Set when the kit rerouted the call to a fallback (budget governance). */
+  degraded?: DegradationInfo | undefined;
 }
 
 export interface TranscribeCall {

@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import type { ResolvedModel } from './types.js';
+import type { DegradationInfo, ResolvedModel } from './types.js';
 
 // Text-to-speech (HTTP). Doubao voice uses X-Api-Key single-header auth and a
 // chunked JSON response whose `data` fields are base64 audio; OpenAI-compatible
@@ -17,6 +17,8 @@ export interface TtsResult {
   url: string | null;
   httpStatus: number;
   raw: string;
+  /** Set when the kit rerouted the call to a fallback (budget governance). */
+  degraded?: DegradationInfo | undefined;
 }
 
 export interface TtsCall {

@@ -1,4 +1,4 @@
-import type { ResolvedModel } from './types.js';
+import type { DegradationInfo, ResolvedModel } from './types.js';
 
 // Non-text modality drivers. Text/embedding/image are synchronous request-
 // response; video is an async submit-then-poll flow driven by the adapter
@@ -37,6 +37,8 @@ export interface EmbedResult {
   usage: EmbedUsage | null;
   httpStatus: number;
   raw: unknown;
+  /** Set when the kit rerouted the call to a fallback (budget governance). */
+  degraded?: DegradationInfo | undefined;
 }
 
 export interface EmbedCall {
@@ -93,6 +95,8 @@ export interface ImageResult {
   url: string | null;
   httpStatus: number;
   raw: unknown;
+  /** Set when the kit rerouted the call to a fallback (budget governance). */
+  degraded?: DegradationInfo | undefined;
 }
 
 export interface ImageCall {
@@ -138,6 +142,8 @@ export interface VideoResult {
   jobId: string | null;
   httpStatus: number;
   raw: unknown;
+  /** Set when the kit rerouted the call to a fallback (budget governance). */
+  degraded?: DegradationInfo | undefined;
 }
 
 export interface VideoCall {

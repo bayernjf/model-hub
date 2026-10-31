@@ -81,6 +81,34 @@ export interface CatalogResponse {
   models: ProjectedModel[];
 }
 
+// Degradation provenance attached to a call result / stream chunk / usage
+// report when the kit rerouted the call away from the requested alias.
+export interface DegradationInfo {
+  reason: 'budget_exceeded';
+  /** Alias the caller asked for; the answer actually came from a fallback. */
+  requestedAlias: string;
+}
+
+// One entry of GET /pub/v1/usage/summary (wire shape).
+export interface UsageSummaryModel {
+  assignment_id: string;
+  alias: string | null;
+  role: string;
+  model: string;
+  spent_micros: number;
+  daily_budget_micros: number | null;
+  percent: number | null;
+}
+
+// Response of GET /pub/v1/usage/summary (W5-1 budget readout).
+export interface UsageSummary {
+  project: string;
+  day: string;
+  generated_at: string;
+  models: UsageSummaryModel[];
+  unassigned_spent_micros: number;
+}
+
 // CamelCase view returned by the resolver.
 export interface ResolvedModel {
   assignmentId: string;
@@ -155,4 +183,10 @@ export interface ModelKitOptions {
   webSocketFactory?: import('./asr.js').AsrSocketFactory;
   // Cache refresh interval in ms (default 5 minutes).
   refreshIntervalMs?: number;
+  // Cost governance switch (W5-2). 'off' disables the whole budget layer:
+  // no summary fetch, no enforcement, no degradation, and
+  // getDailyBudgetState() returns null. Defaults to 'on' unless the env
+  // MODEL_KIT_BUDGET_ENFORCEMENT is 'off'. Assignments without a configured
+  // daily budget are never governed either way.
+  budgetEnforcement?: 'on' | 'off' | undefined;
 }

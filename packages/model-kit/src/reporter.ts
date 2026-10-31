@@ -14,6 +14,9 @@ export interface UsageInput {
   reasoningTokens?: number | undefined;
   httpStatus: number;
   cached?: boolean | undefined;
+  /** True when the kit rerouted the call to a fallback (budget governance,
+   * FR6-2); lets the hub ledger attribute degraded spend. */
+  degraded?: boolean | undefined;
 }
 
 // Fire-and-forget usage report. Never blocks or throws into the caller.
@@ -36,6 +39,7 @@ export async function postUsage(
     reasoning_tokens: input.reasoningTokens ?? null,
     http_status: input.httpStatus,
     cached: input.cached ?? false,
+    degraded: input.degraded ?? false,
     ts: new Date().toISOString(),
   };
   try {
