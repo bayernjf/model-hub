@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
-    "@model-hub/model-kit": "0.1.1",
+    "@model-hub/model-kit": "*",
     "hono": "^4.6.16",
     "ws": "^8.22.0",
     "zod": "^4.6.7"
