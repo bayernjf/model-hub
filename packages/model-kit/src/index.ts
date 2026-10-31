@@ -34,7 +34,7 @@ import type {
   UsageSummary,
 } from './types.js';
 
-export const KIT_VERSION = '0.1.0';
+export const KIT_VERSION = '0.2.0';
 
 export const MODALITIES = [
   'text',
