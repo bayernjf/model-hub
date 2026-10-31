@@ -327,6 +327,6 @@ describe('L1 provider test route', () => {
       .prepare("SELECT detail FROM admin_audit WHERE action = 'provider.test'")
       .all() as Array<{ detail: string | null }>;
     expect(rows).toHaveLength(1);
-    expect(rows[0].detail).toBeNull();
+    expect(rows[0]?.detail).toBeNull();
   });
 });
