@@ -15,6 +15,7 @@ import {
 } from '../../repositories/provider-keys.js';
 import type { RevisionService } from '../../revision.js';
 import { normalizePolicy, policyJson } from '../../cooldown-policy.js';
+import { testProvider } from '../../connection-test.js';
 
 export function providerKeyRoutes(
   config: HubConfig,
@@ -93,6 +94,43 @@ export function providerKeyRoutes(
       }
       throw err;
     }
+  });
+
+  // POST .../keys/:keyId/test — L1 connection test for one pool key.
+  routes.post('/:id/keys/:keyId/test', requireOwner(), async (c) => {
+    const id = c.req.param('id');
+    const keyId = c.req.param('keyId');
+    const provider = providers.get(id);
+    if (!provider) return c.json({ error: { code: 'not_found' } }, 404);
+    const owned = keys.get(keyId);
+    if (!owned || owned.provider_id !== id) {
+      return c.json({ error: { code: 'not_found' } }, 404);
+    }
+    const apiKey = keys.revealKey(keyId);
+    if (!apiKey) {
+      return c.json({
+        ok: false,
+        latency_ms: 0,
+        scope: 'key',
+        error: { code: 'unauthorized', hint: '该密钥不可用' },
+      });
+    }
+    const result = await testProvider({
+      base_url: provider.base_url,
+      api_key: apiKey,
+      protocol: provider.protocol,
+      billing_type: provider.billing_type,
+      preset_id: provider.preset_id,
+    });
+    writeAudit(db, {
+      actor: c.get('session')?.username ?? 'unknown',
+      action: 'provider_key.test',
+      targetType: 'provider_key',
+      targetId: keyId,
+      result: result.ok ? 'success' : 'failure',
+      ip: clientIp(c),
+    });
+    return c.json({ ...result, scope: 'key' });
   });
 
   // POST .../keys/reorder { ordered_ids: string[] }

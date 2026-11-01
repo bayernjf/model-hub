@@ -95,6 +95,12 @@ export class ProviderKeyRepository {
     return row ? toView(row) : null;
   }
 
+  /** Decrypted key for one pool row (L1 per-key connection test). */
+  revealKey(id: string): string | null {
+    const row = this.rowById(id);
+    return row ? decrypt(row.api_key_cipher, this.ring) : null;
+  }
+
   add(providerId: string, label: string, apiKey: string): ProviderKeyView {
     const now = nowIso();
     this.db.exec('BEGIN');
