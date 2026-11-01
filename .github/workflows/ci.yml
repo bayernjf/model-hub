@@ -27,6 +27,8 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+      - name: Design tokens in sync
+        run: npm run check:tokens
       - name: Typecheck
         run: npm run typecheck
       - name: Lint
