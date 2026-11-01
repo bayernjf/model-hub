@@ -1,5 +1,5 @@
 /* Tier0 family dark industrial console tokens (mirrors ops-console). */
-/* @bayjf/ui-tokens:begin — generated from bayjf/ui-tokens; do not edit by hand */
+/* @bayjf/console-ui:begin — generated from bayjf/console-ui; do not edit by hand */
 :root {
   --steel-950: #06090b;
   --steel-900: #0a0f12;
@@ -30,7 +30,7 @@
   --bevel-deep: inset 0 2px 3px rgba(0, 0, 0, 0.8);
   --hair: 1px solid var(--steel-600);
 }
-/* @bayjf/ui-tokens:end */
+/* @bayjf/console-ui:end */
 
 * { box-sizing: border-box; }
 
