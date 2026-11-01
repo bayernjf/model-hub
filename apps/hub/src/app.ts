@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { buildKeyRing } from './crypto/keyring.js';
 import type { HubConfig } from './config.js';
 import { ProviderRepository } from './repositories/providers.js';
+import { ProviderKeyRepository } from './repositories/provider-keys.js';
 import { ProjectRepository } from './repositories/projects.js';
 import { ModelRepository } from './repositories/models.js';
 import { AssignmentRepository } from './repositories/assignments.js';
@@ -20,6 +21,7 @@ import type { KnowledgePortsResolver } from './knowledge/service.js';
 import { createKnowledgePortsResolver } from './knowledge/ports.js';
 import { healthRoutes } from './routes/health.js';
 import { providerRoutes } from './routes/admin/providers.js';
+import { providerKeyRoutes } from './routes/admin/provider-keys.js';
 import { projectRoutes } from './routes/admin/projects.js';
 import { modelRoutes } from './routes/admin/models.js';
 import { assignmentRoutes } from './routes/admin/assignments.js';
@@ -48,6 +50,7 @@ export function createApp(
 
   const keyRing = buildKeyRing(config.masterKey);
   const providerRepo = new ProviderRepository(db, keyRing);
+  const providerKeyRepo = new ProviderKeyRepository(db, keyRing);
   const projectRepo = new ProjectRepository(db);
   const modelRepo = new ModelRepository(db);
   const assignmentRepo = new AssignmentRepository(db);
@@ -58,6 +61,7 @@ export function createApp(
     providerRepo,
     modelRepo,
     assignmentRepo,
+    providerKeyRepo,
   );
   const usageRepo = new UsageRepository(db);
   const healthRepo = new HealthCheckRepository(db);
@@ -78,6 +82,10 @@ export function createApp(
   app.route(
     '/api/admin/providers',
     providerRoutes(config, db, providerRepo, revision),
+  );
+  app.route(
+    '/api/admin/providers',
+    providerKeyRoutes(config, db, providerRepo, providerKeyRepo, revision),
   );
   app.route('/api/admin/projects', projectRoutes(config, db, projectRepo));
   app.route(
@@ -128,6 +136,7 @@ export function createApp(
         : {}),
       projection,
       revision,
+      providerKeyRepo,
     }),
   );
   app.route(

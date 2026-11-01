@@ -14,7 +14,8 @@ import {
 } from './budget.js';
 import { pingHub, runTest } from './health.js';
 import { completeJson, streamChat } from './driver.js';
-import type { ChatMessage, ChatResult, StreamChunk } from './driver.js';
+import type { ChatMessage, ChatResult, KeyExhaustedHandler, StreamChunk } from './driver.js';
+import { postKeyEvent } from './key-events.js';
 import { embedJson, generateImage, generateVideo } from './media.js';
 import type { EmbedResult, ImageResult, VideoResult } from './media.js';
 import { synthesize } from './audio.js';
@@ -303,6 +304,16 @@ export class ModelKit {
     );
   }
 
+  // Best-effort report of a quota-exhausted pool key so the hub cools it.
+  private reportKeyExhausted: KeyExhaustedHandler = (event) => {
+    void postKeyEvent(
+      this.options.hubUrl,
+      this.options.token,
+      this.fetchImpl,
+      { keyId: event.keyId, kind: 'quota_exhausted', code: event.code ?? undefined },
+    );
+  };
+
   // Non-streaming chat with automatic background usage reporting.
   async chat(
     alias: string,
@@ -321,6 +332,7 @@ export class ModelKit {
         signal: opts?.signal,
         maxTokens: opts?.maxTokens,
         temperature: opts?.temperature,
+        onKeyExhausted: this.reportKeyExhausted,
       },
       this.fetchImpl,
     );
@@ -348,6 +360,7 @@ export class ModelKit {
         signal: opts?.signal,
         maxTokens: opts?.maxTokens,
         temperature: opts?.temperature,
+        onKeyExhausted: this.reportKeyExhausted,
       },
       this.fetchImpl,
     )) {
@@ -533,6 +546,13 @@ export type {
 } from './asr.js';
 
 export { postUsage, reportUsageInBackground } from './reporter.js';
+export { postKeyEvent } from './key-events.js';
+export {
+  classifyProviderError,
+  AllProviderKeysExhaustedError,
+  ProviderRequestError,
+  QUOTA_ERROR_PATTERNS,
+} from './provider-errors.js';
 export type { UsageInput } from './reporter.js';
 
 export {
