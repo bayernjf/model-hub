@@ -12,12 +12,18 @@ export type CooldownPolicy =
   | { kind: 'weekly'; weekday?: number; time?: string }
   | { kind: 'monthly'; dayOfMonth?: number; time?: string };
 
-export const DEFAULT_COOLDOWN_POLICY: Required<{ kind: 'hours'; hours: number }> = {
+/** Normalized form: every field present so downstream math is null-safe. */
+export type NormalizedCooldownPolicy =
+  | { kind: 'hours'; hours: number }
+  | { kind: 'weekly'; weekday: number; time: string }
+  | { kind: 'monthly'; dayOfMonth: number; time: string };
+
+export const DEFAULT_COOLDOWN_POLICY = {
   kind: 'hours',
   hours: 5,
-};
+} as const;
 
-export function normalizePolicy(raw: unknown): CooldownPolicy {
+export function normalizePolicy(raw: unknown): NormalizedCooldownPolicy {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_COOLDOWN_POLICY };
   const p = raw as Record<string, unknown>;
   if (p.kind === 'weekly') {
