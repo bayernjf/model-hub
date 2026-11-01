@@ -97,29 +97,62 @@ export class ProviderKeyRepository {
 
   add(providerId: string, label: string, apiKey: string): ProviderKeyView {
     const now = nowIso();
-    const max = this.db
-      .prepare('SELECT COALESCE(MAX(seq), -1) AS m FROM provider_keys WHERE provider_id = ?')
-      .get(providerId) as { m: number };
-    const id = newId('pkey');
-    this.db
-      .prepare(
-        `INSERT INTO provider_keys
-           (id, provider_id, label, api_key_cipher, api_key_hint, is_active,
-            status, cooled_until, last_error_code, last_failed_at, seq,
-            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 1, 'ok', NULL, NULL, NULL, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        providerId,
-        label,
-        encrypt(apiKey, this.ring),
-        maskSecret(apiKey),
-        max.m + 1,
-        now,
-        now,
-      );
-    return this.get(id) as ProviderKeyView;
+    this.db.exec('BEGIN');
+    try {
+      // A provider created after migration 014 keeps its first key in the
+      // legacy providers column. When its first pool row is added, promote
+      // that legacy cipher to pool seq=0 so ordering is [legacy, new] and the
+      // original key stays manageable/disable-able (design §2 read/write parity).
+      const existing = this.db
+        .prepare('SELECT COUNT(*) AS n FROM provider_keys WHERE provider_id = ?')
+        .get(providerId) as { n: number };
+      if (existing.n === 0) {
+        const legacy = this.db
+          .prepare('SELECT api_key_cipher, api_key_hint, created_at FROM providers WHERE id = ?')
+          .get(providerId) as
+          | { api_key_cipher: string | null; api_key_hint: string | null; created_at: string }
+          | undefined;
+        if (legacy?.api_key_cipher) {
+          this.db
+            .prepare(
+              `INSERT INTO provider_keys
+                 (id, provider_id, label, api_key_cipher, api_key_hint, is_active,
+                  status, cooled_until, last_error_code, last_failed_at, seq,
+                  created_at, updated_at)
+               VALUES (?, ?, '', ?, ?, 1, 'ok', NULL, NULL, NULL, 0, ?, ?)`,
+            )
+            .run(newId('pkey'), providerId, legacy.api_key_cipher, legacy.api_key_hint ?? '', legacy.created_at, now);
+        }
+      }
+
+      const max = this.db
+        .prepare('SELECT COALESCE(MAX(seq), -1) AS m FROM provider_keys WHERE provider_id = ?')
+        .get(providerId) as { m: number };
+      const id = newId('pkey');
+      this.db
+        .prepare(
+          `INSERT INTO provider_keys
+             (id, provider_id, label, api_key_cipher, api_key_hint, is_active,
+              status, cooled_until, last_error_code, last_failed_at, seq,
+              created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 1, 'ok', NULL, NULL, NULL, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          providerId,
+          label,
+          encrypt(apiKey, this.ring),
+          maskSecret(apiKey),
+          max.m + 1,
+          now,
+          now,
+        );
+      this.db.exec('COMMIT');
+      return this.get(id) as ProviderKeyView;
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
   }
 
   setActive(id: string, active: boolean): ProviderKeyView {
@@ -151,10 +184,16 @@ export class ProviderKeyRepository {
     const stmt = this.db.prepare(
       'UPDATE provider_keys SET seq = ?, updated_at = ? WHERE id = ? AND provider_id = ?',
     );
-    const tx = this.db.transaction((ids: string[]) => {
-      ids.forEach((id, index) => stmt.run(index, now, id, providerId));
-    });
-    tx(orderedIds);
+    this.db.exec('BEGIN');
+    try {
+      for (const [index, id] of orderedIds.entries()) {
+        stmt.run(index, now, id, providerId);
+      }
+      this.db.exec('COMMIT');
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
     return this.listForProvider(providerId);
   }
 

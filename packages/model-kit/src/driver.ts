@@ -153,10 +153,11 @@ export async function completeJson(
       failedOver = true;
       continue; // replay the identical request with the next key
     }
-    if (kind === 'quota_exhausted' && i + 1 >= creds.length) {
-      if (cred.keyId) {
-        call.onKeyExhausted?.({ keyId: cred.keyId, status: res.status, code: errorCode(body) });
-      }
+    // A real pool key (non-empty id) with no successor is fully exhausted.
+    // A legacy single key (keyId '') must surface the provider response just
+    // like pre-pool behavior, not the pool error — fall through below.
+    if (kind === 'quota_exhausted' && cred.keyId) {
+      call.onKeyExhausted?.({ keyId: cred.keyId, status: res.status, code: errorCode(body) });
       throw new AllProviderKeysExhaustedError(res.status, body);
     }
     // rate_limited, 401/403/5xx: surface the provider error; no rotation.
@@ -273,14 +274,14 @@ export async function* streamChat(
       failedOver = true;
       continue;
     }
-    if (attempt.exhausted && i + 1 >= creds.length) {
-      if (attempt.keyId) {
-        call.onKeyExhausted?.({
-          keyId: attempt.keyId,
-          status: attempt.status,
-          code: errorCode(attempt.body),
-        });
-      }
+    // A real pool with no successor is fully exhausted; a legacy single key
+    // (empty id) surfaces a plain provider error (pre-pool behavior).
+    if (attempt.exhausted && attempt.keyId) {
+      call.onKeyExhausted?.({
+        keyId: attempt.keyId,
+        status: attempt.status,
+        code: errorCode(attempt.body),
+      });
       throw new AllProviderKeysExhaustedError(attempt.status, attempt.body);
     }
     // Non-quota failure (ordinary 429 / 401 / 403 / 5xx): no failover, surface

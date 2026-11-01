@@ -8,9 +8,12 @@ import type { ProviderErrorKind } from './types.js';
 // Substring match over lowercased code/type/message, covering Ark/OpenAI-style
 // payloads plus common Chinese billing phrases. Tighten to an exact Ark error
 // code once a real quota-exhausted body is observed (no schema change needed).
+// NOTE: a bare "exceed"/"exceeded" is deliberately absent — ordinary RPM/TPM
+// throttles routinely say "rate limit exceeded", which must NOT rotate. Real
+// quota messages carry quota/balance/credit/欠费 wording (OpenAI: "You exceeded
+// your current quota", matched via "quota" rather than "exceeded").
 export const QUOTA_ERROR_PATTERNS: readonly string[] = [
   'quota',
-  'exceed',
   'insufficient',
   'balance',
   'arrears',
@@ -59,9 +62,10 @@ function flatten(body: unknown): string {
  * @param body parsed JSON body (or null)
  */
 export function classifyProviderError(status: number, body: unknown): ProviderErrorKind {
-  if (status !== 429 || !body) return 'other';
+  if (status !== 429) return 'other';
+  if (!body) return 'rate_limited'; // 429 with no body: assume throttling, never rotate.
   const text = flatten(body);
-  if (!text) return 'other'; // 429 with no body: never rotate blindly.
+  if (!text) return 'rate_limited'; // 429 with unreadable body: never rotate blindly.
   if (QUOTA_ERROR_PATTERNS.some((p) => text.includes(p))) return 'quota_exhausted';
   // Any other 429 (rate-limit text or unrecognized) is transient, not a spent key.
   return 'rate_limited';
