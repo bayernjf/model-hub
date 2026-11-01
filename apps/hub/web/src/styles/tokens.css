@@ -1,4 +1,5 @@
 /* Tier0 family dark industrial console tokens (mirrors ops-console). */
+/* @bayjf/console-ui:begin — generated from bayjf/console-ui; do not edit by hand */
 :root {
   --steel-950: #06090b;
   --steel-900: #0a0f12;
@@ -9,14 +10,14 @@
   --steel-500: #384954;
   --steel-400: #566b78;
 
-  --power: #ffb020;
+  --power: #ffb020; /* decision gates / amber hold */
   --power-dim: #7a5310;
-  --data: #35e0f0;
+  --data: #35e0f0; /* goods & data flow */
   --data-dim: #12626d;
   --ok: #66e07a;
   --warn: #ff9d2e;
   --alert: #ff4a3d;
-  --plasma: #b467ff;
+  --plasma: #b467ff; /* channel adapters */
 
   --ink: #e8f0f4;
   --ink-dim: #8ea2ad;
@@ -29,6 +30,7 @@
   --bevel-deep: inset 0 2px 3px rgba(0, 0, 0, 0.8);
   --hair: 1px solid var(--steel-600);
 }
+/* @bayjf/console-ui:end */
 
 * { box-sizing: border-box; }
 
