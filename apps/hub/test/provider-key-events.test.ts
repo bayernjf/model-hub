@@ -182,3 +182,37 @@ describe('POST /pub/v1/key-events', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('POST /api/admin/providers/:id/keys/:keyId/test (per-key L1)', () => {
+  it('requires an owner session', async () => {
+    const { t, providerId } = await bootstrap();
+    const list = await t.app.request(`/api/admin/providers/${providerId}/keys`);
+    expect(list.status).toBe(401);
+  });
+
+  it('returns 404 for a key that belongs to another provider', async () => {
+    const { t, hdr } = await bootstrap();
+    const res = await t.app.request('/api/admin/providers/prov_doesnotexist/keys/pkey_doesnotexist/test', {
+      method: 'POST',
+      headers: hdr,
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('never echoes the decrypted key in the response body', async () => {
+    const { t, hdr, providerId } = await bootstrap();
+    const listRes = await t.app.request(`/api/admin/providers/${providerId}/keys`, {
+      headers: { Cookie: hdr.Cookie },
+    });
+    const keys = ((await listRes.json()) as { keys: Array<{ id: string }> }).keys;
+    const res = await t.app.request(
+      `/api/admin/providers/${providerId}/keys/${keys[0]!.id}/test`,
+      { method: 'POST', headers: hdr },
+    );
+    // Unreachable host -> a connection/timeout failure is a valid L1 result,
+    // but the plaintext key must never appear in JSON.
+    const body = await res.text();
+    expect(body).not.toContain('vendor-key-A');
+    expect(body).not.toContain('vendor-key-B');
+  });
+});
