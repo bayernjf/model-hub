@@ -8,7 +8,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "dev": "node --experimental-sqlite --watch --env-file=.env.local src/server.ts",
+    "dev": "node --experimental-sqlite --experimental-transform-types --watch --import ./dev-resolve.mjs --env-file=.env.local src/server.ts",
     "start": "node --experimental-sqlite dist/server.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
