@@ -180,6 +180,45 @@ describe('assignment management', () => {
     expect(res.status).toBe(400);
   });
 
+  it('allows the same model under distinct aliases', async () => {
+    const res = await put({
+      project_id: prj,
+      assignments: [
+        { model_id: mid, alias: 'noul' },
+        { model_id: mid, alias: 'choice' },
+        { model_id: mid, alias: 'score' },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      assignments: Array<{ model_id: string; alias: string }>;
+    };
+    expect(data.assignments).toHaveLength(3);
+    expect(data.assignments.map((a) => a.alias)).toEqual([
+      'noul',
+      'choice',
+      'score',
+    ]);
+    expect(
+      data.assignments.every((a) => a.model_id === mid),
+    ).toBe(true);
+  });
+
+  it('rejects an aliased row after an alias-less row of the same model', async () => {
+    const res = await put({
+      project_id: prj,
+      assignments: [
+        { model_id: mid },
+        { model_id: mid, alias: 'noul' },
+      ],
+    });
+    expect(res.status).toBe(400);
+    const data = (await res.json()) as {
+      error: { code: string };
+    };
+    expect(data.error.code).toBe('duplicate_model');
+  });
+
   it('rejects an unknown model', async () => {
     const res = await put({
       project_id: prj,

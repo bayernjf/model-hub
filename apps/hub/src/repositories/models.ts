@@ -61,6 +61,14 @@ export interface ImportResult {
   skipped: string[];
 }
 
+export interface ModelTestResultView {
+  deep: boolean;
+  ok: boolean;
+  latency_ms: number;
+  error_code: string | null;
+  tested_at: string;
+}
+
 export class PresetNotFoundError extends Error {
   constructor(presetProviderId: string) {
     super(`preset provider not found: ${presetProviderId}`);
@@ -320,5 +328,63 @@ export class ModelRepository {
       .prepare('DELETE FROM model_overlays WHERE id = ?')
       .run(id);
     return Number(result.changes) > 0;
+  }
+
+  // Append one L2 test outcome (migration 013). Every probe the test route
+  // runs goes through here so the models page can render the last result
+  // after a reload instead of a session-only badge.
+  recordTestResult(input: {
+    model_id: string;
+    deep: boolean;
+    ok: boolean;
+    latency_ms: number;
+    error_code: string | null;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO model_test_results
+           (id, model_id, deep, ok, latency_ms, error_code, tested_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        newId('mtr'),
+        input.model_id,
+        input.deep ? 1 : 0,
+        input.ok ? 1 : 0,
+        input.latency_ms,
+        input.error_code,
+        nowIso(),
+      );
+  }
+
+  // Newest recorded test per model, keyed by model id.
+  latestTestResults(): Record<string, ModelTestResultView> {
+    const rows = this.db
+      .prepare(
+        `SELECT m.model_id, m.deep, m.ok, m.latency_ms, m.error_code, m.tested_at
+         FROM model_test_results m
+         JOIN (SELECT model_id, MAX(rowid) AS mr
+               FROM model_test_results GROUP BY model_id) latest
+           ON m.rowid = latest.mr`,
+      )
+      .all() as unknown as Array<{
+      model_id: string;
+      deep: number;
+      ok: number;
+      latency_ms: number;
+      error_code: string | null;
+      tested_at: string;
+    }>;
+    const out: Record<string, ModelTestResultView> = {};
+    for (const r of rows) {
+      out[r.model_id] = {
+        deep: r.deep === 1,
+        ok: r.ok === 1,
+        latency_ms: r.latency_ms,
+        error_code: r.error_code,
+        tested_at: r.tested_at,
+      };
+    }
+    return out;
   }
 }

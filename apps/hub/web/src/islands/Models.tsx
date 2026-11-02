@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useReducer, useState } from 'react';
 import {
   CheckCircle2,
   Loader2,
@@ -6,7 +6,7 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
-import { apiFetch, apiJson } from './api';
+import { apiFetch, apiJson, errorText } from './api';
 import AsyncState from './AsyncState';
 import type {
   ModelView,
@@ -19,6 +19,19 @@ interface L2Result {
   ok: boolean;
   latency_ms: number;
   error?: { code: string; hint?: string; detail?: string };
+}
+
+// Persisted last test from GET /api/admin/models (migration 013).
+interface PersistedTest {
+  deep: boolean;
+  ok: boolean;
+  latency_ms: number;
+  error_code: string | null;
+  tested_at: string;
+}
+
+function testedAtLabel(testedAt: string): string {
+  return testedAt.slice(0, 19).replace('T', ' ');
 }
 
 function PriceText({ model }: { model: ModelView }) {
@@ -42,20 +55,45 @@ function PriceText({ model }: { model: ModelView }) {
   return <span>—</span>;
 }
 
-function L2Badge({ result }: { result: L2Result | undefined }) {
-  if (!result) return <span className="tag">未测试</span>;
-  if (result.ok) {
+function L2Badge({
+  result,
+  persisted,
+}: {
+  result?: L2Result | undefined;
+  persisted?: PersistedTest | undefined;
+}) {
+  // A session result wins (it is the freshest); otherwise show the persisted
+  // last test so the badge survives a reload.
+  if (result) {
+    if (result.ok) {
+      return (
+        <span className="tag tag--ok">
+          <CheckCircle2 size={11} /> {result.latency_ms}ms
+        </span>
+      );
+    }
     return (
-      <span className="tag tag--ok">
-        <CheckCircle2 size={11} /> {result.latency_ms}ms
+      <span className="tag tag--fail" title={result.error?.hint ?? result.error?.detail}>
+        <XCircle size={11} /> {result.error?.code}
       </span>
     );
   }
-  return (
-    <span className="tag tag--fail" title={result.error?.hint ?? result.error?.detail}>
-      <XCircle size={11} /> {result.error?.code}
-    </span>
-  );
+  if (persisted) {
+    const when = `上次测试 ${testedAtLabel(persisted.tested_at)}`;
+    if (persisted.ok) {
+      return (
+        <span className="tag tag--ok" title={when}>
+          <CheckCircle2 size={11} /> {persisted.latency_ms}ms
+        </span>
+      );
+    }
+    return (
+      <span className="tag tag--fail" title={when}>
+        <XCircle size={11} /> {persisted.error_code ?? 'error'}
+      </span>
+    );
+  }
+  return <span className="tag">未测试</span>;
 }
 
 const MODALITY_FILTERS = [
@@ -72,34 +110,61 @@ export default function Models() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [presets, setPresets] = useState<PresetProvider[]>([]);
   const [filter, setFilter] = useState<string>('all');
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
   const [l2, setL2] = useState<Record<string, L2Result>>({});
+  const [lastTests, setLastTests] = useState<Record<string, PersistedTest>>({});
   const [testing, setTesting] = useState<string | null>(null);
+  // model_id -> number of distinct projects assigning it. Disabling an
+  // assigned model breaks those projects' calls immediately, so the count
+  // must be visible before the toggle, not after.
+  const [assignCounts, setAssignCounts] = useState<Record<string, number>>({});
+  const [, bump] = useReducer((x: number) => x + 1, 0);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+
+  const refresh = useCallback(async () => {
     setLoadError(null);
     try {
-      const data = await apiJson<{ models: ModelView[] }>('/api/admin/models');
-      setModels(data.models);
-    } catch (thrown) {
-      setLoadError(thrown instanceof Error ? thrown.message : String(thrown));
+      const [modelsData, providersData, presetsData, assignmentsData] =
+        await Promise.all([
+          apiJson<{
+            models: ModelView[];
+            last_tests?: Record<string, PersistedTest>;
+          }>('/api/admin/models'),
+          apiJson<{ providers: Provider[] }>('/api/admin/providers'),
+          apiJson<PresetsResponse>('/api/admin/presets'),
+          apiJson<{
+            assignments: Array<{ project_id: string; model_id: string }>;
+          }>('/api/admin/assignments'),
+        ]);
+      setModels(modelsData.models);
+      setLastTests(modelsData.last_tests ?? {});
+      setProviders(providersData.providers);
+      setPresets(presetsData.presets);
+      const projectsByModel: Record<string, Set<string>> = {};
+      for (const a of assignmentsData.assignments) {
+        const set = projectsByModel[a.model_id] ?? new Set<string>();
+        set.add(a.project_id);
+        projectsByModel[a.model_id] = set;
+      }
+      const counts: Record<string, number> = {};
+      for (const [modelId, projects] of Object.entries(projectsByModel)) {
+        counts[modelId] = projects.size;
+      }
+      setAssignCounts(counts);
+    } catch (err) {
+      setLoadError(errorText(err));
+
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
-    void apiJson<{ providers: Provider[] }>('/api/admin/providers').then((d) =>
-      setProviders(d.providers),
-    );
-    void apiJson<PresetsResponse>('/api/admin/presets').then((d) =>
-      setPresets(d.presets),
-    );
-  }, [load]);
+    void refresh();
+  }, [refresh]);
 
   const runL2 = useCallback(
     async (id: string, deep: boolean) => {
@@ -117,13 +182,25 @@ export default function Models() {
 
   const toggleEnabled = useCallback(
     async (id: string, enabled: boolean) => {
+      if (!enabled) {
+        const assigned = assignCounts[id] ?? 0;
+        if (
+          assigned > 0 &&
+          !window.confirm(
+            `该模型已被 ${assigned} 个项目分配，停用后这些项目的调用会立即失败。确定停用？`,
+          )
+        ) {
+          bump();
+          return;
+        }
+      }
       await apiFetch(`/api/admin/models/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ enabled }),
       });
-      void load();
+      void refresh();
     },
-    [load],
+    [assignCounts, refresh],
   );
 
   const providerName = useCallback(
@@ -132,15 +209,33 @@ export default function Models() {
     [providers],
   );
 
-  const filtered = models.filter(
-    (m) => filter === 'all' || m.modalities.includes(filter),
-  );
+  const q = query.trim().toLowerCase();
+  const filtered = models.filter((m) => {
+    if (filter !== 'all' && !m.modalities.includes(filter)) return false;
+    if (q === '') return true;
+    const hay =
+      `${m.display_name ?? ''} ${m.model} ${providerName(m.provider_id)}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (loadError) {
+    return (
+      <div className="panel stack">
+        <p className="error">加载失败：{loadError}</p>
+        <div>
+          <button className="btn" onClick={() => void refresh()}>
+            重试
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return <AsyncState loading />;
   }
   if (loadError) {
-    return <AsyncState error={loadError} onRetry={() => void load()} />;
+    return <AsyncState error={loadError} onRetry={() => void refresh()} />;
   }
   if (filtered.length === 0) {
     return <AsyncState empty emptyText="暂无模型：请先在厂商页接入或导入模型。" />;
@@ -149,6 +244,13 @@ export default function Models() {
   return (
     <div className="stack">
       <div className="toolbar">
+        <input
+          type="search"
+          value={query}
+          placeholder="搜索模型 / 厂商…"
+          aria-label="搜索模型"
+          onChange={(e) => setQuery(e.target.value)}
+        />
         <div className="filters">
           {MODALITY_FILTERS.map((f) => (
             <button
@@ -172,7 +274,7 @@ export default function Models() {
           onClose={() => setShowDrawer(false)}
           onImported={() => {
             setShowDrawer(false);
-            void load();
+            void refresh();
           }}
         />
       )}
@@ -186,54 +288,70 @@ export default function Models() {
               <th>模态</th>
               <th>单价</th>
               <th>启用</th>
+              <th>分配</th>
               <th>L2 状态</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((m) => (
-              <tr key={m.id}>
-                <td>{m.display_name ?? m.model}</td>
-                <td>{providerName(m.provider_id)}</td>
-                <td className="mono dim">{m.modalities.join(',')}</td>
-                <td><PriceText model={m} /></td>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={m.enabled}
-                    onChange={(e) => void toggleEnabled(m.id, e.target.checked)}
-                  />
-                </td>
-                <td><L2Badge result={l2[m.id]} /></td>
-                <td>
-                  <button
-                    className="btn"
-                    disabled={testing === m.id}
-                    onClick={() => void runL2(m.id, false)}
-                  >
-                    {testing === m.id ? (
-                      <Loader2 size={13} className="spin" />
+            {filtered.map((m) => {
+              const assigned = assignCounts[m.id] ?? 0;
+              return (
+                <tr key={m.id}>
+                  <td>{m.display_name ?? m.model}</td>
+                  <td>{providerName(m.provider_id)}</td>
+                  <td className="mono dim">{m.modalities.join(',')}</td>
+                  <td><PriceText model={m} /></td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`启用 ${m.display_name ?? m.model}`}
+                      checked={m.enabled}
+                      onChange={(e) =>
+                        void toggleEnabled(m.id, e.target.checked)
+                      }
+                    />
+                  </td>
+                  <td>
+                    {assigned > 0 ? (
+                      <span className="tag tag--warn">已分配 {assigned} 项目</span>
                     ) : (
-                      '测试'
+                      <span className="dim">—</span>
                     )}
-                  </button>
-                  {(m.modalities.includes('image') ||
-                    m.modalities.includes('video')) && (
+                  </td>
+                  <td>
+                    <L2Badge result={l2[m.id]} persisted={lastTests[m.id]} />
+                  </td>
+                  <td>
                     <button
-                      className="btn btn--ghost"
-                      onClick={() => {
-                        if (
-                          confirm('深度测试会产生极少费用，且视频只提交一次。继续？')
-                        )
-                          void runL2(m.id, true);
-                      }}
+                      className="btn"
+                      disabled={testing === m.id}
+                      onClick={() => void runL2(m.id, false)}
                     >
-                      深度测试
+                      {testing === m.id ? (
+                        <Loader2 size={13} className="spin" />
+                      ) : (
+                        '测试'
+                      )}
                     </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+                    {(m.modalities.includes('image') ||
+                      m.modalities.includes('video')) && (
+                      <button
+                        className="btn btn--ghost"
+                        onClick={() => {
+                          if (
+                            confirm('深度测试会产生极少费用，且视频只提交一次。继续？')
+                          )
+                            void runL2(m.id, true);
+                        }}
+                      >
+                        深度测试
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

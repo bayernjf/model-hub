@@ -202,6 +202,7 @@ export class UsageRepository {
   // Raw aggregation for the read-only cost dashboard (W7-4). Groups by project
   // slug × billing_source × day × model. byok rows carry no cost (owner does
   // not pay for user keys); their volume is still summed for display.
+
   // reasoning_tokens may be NULL per row (non-reasoning models); SUM skips
   // NULLs and COALESCE keeps all-empty groups at zero.
   aggregate(window?: CostAggregateWindow): CostAggregateRow[] {
@@ -237,6 +238,7 @@ export class UsageRepository {
          ORDER BY day DESC, project ASC, model ASC`,
       )
       .all(...params) as unknown as CostAggregateRow[];
+
   }
 }
 

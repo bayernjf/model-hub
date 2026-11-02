@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AsyncState from './AsyncState';
-import { apiJson } from './api';
+import { apiJson, errorText } from './api';
 
 interface CostCell {
   calls: number;
@@ -107,12 +107,19 @@ export default function Costs() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [range, setRange] = useState<RangeKey>('all');
   const [attempt, setAttempt] = useState(0);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  // Custom date range (branch m7-wrapup): overrides the preset when set.
+  const [customRange, setCustomRange] = useState<{ from: string; to: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
-    apiJson<CostsResponse>(`/api/admin/costs${windowQuery(range)}`)
+    const qs = customRange
+      ? `?from=${encodeURIComponent(customRange.from)}&to=${encodeURIComponent(customRange.to)}`
+      : windowQuery(range);
+    apiJson<CostsResponse>(`/api/admin/costs${qs}`)
       .then((d) => {
         if (!cancelled) setData(d);
       })
@@ -127,7 +134,25 @@ export default function Costs() {
     return () => {
       cancelled = true;
     };
-  }, [range, attempt]);
+  }, [range, attempt, customRange]);
+
+  const applyCustom = () => {
+    if (!from && !to) {
+      setCustomRange(null);
+      setRange('all');
+      return;
+    }
+    setCustomRange({ from, to });
+    setAttempt((a) => a + 1);
+  };
+
+  const clearCustom = () => {
+    setFrom('');
+    setTo('');
+    setCustomRange(null);
+    setRange('all');
+    setAttempt((a) => a + 1);
+  };
 
   if (loading && !data) return <AsyncState loading />;
   if (loadError) return <AsyncState error={loadError} onRetry={() => setAttempt((a) => a + 1)} />;
@@ -140,12 +165,35 @@ export default function Costs() {
           {RANGES.map((r) => (
             <button
               key={r.key}
-              className={`btn ${range === r.key ? 'btn--primary' : ''}`}
-              onClick={() => setRange(r.key)}
+              className={`btn ${range === r.key && !customRange ? 'btn--primary' : ''}`}
+              onClick={() => {
+                setRange(r.key);
+                setCustomRange(null);
+              }}
             >
               {r.label}
             </button>
           ))}
+        </div>
+        <div className="filters">
+          <input
+            type="date"
+            aria-label="开始日期"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+          <input
+            type="date"
+            aria-label="结束日期"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
+          <button className="btn btn--primary" onClick={applyCustom}>
+            查询
+          </button>
+          <button className="btn btn--ghost" onClick={clearCustom}>
+            清除
+          </button>
         </div>
         {loading && <p className="dim">刷新中…</p>}
       </div>

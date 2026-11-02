@@ -6,7 +6,7 @@ import {
   Plus,
 } from 'lucide-react';
 import AsyncState from './AsyncState';
-import { apiFetch, apiJson } from './api';
+import { apiFetch, apiJson, errorText } from './api';
 
 interface Project {
   id: string;
@@ -37,7 +37,9 @@ export default function Projects() {
   const [plainToken, setPlainToken] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+
     setLoading(true);
+
     setLoadError(null);
     try {
       // The list endpoint returns summary rows; fetch details for tokens.
@@ -53,8 +55,10 @@ export default function Projects() {
         }),
       );
       setProjects(details);
-    } catch (thrown) {
-      setLoadError(thrown instanceof Error ? thrown.message : String(thrown));
+
+    } catch (err) {
+      setLoadError(errorText(err));
+
     } finally {
       setLoading(false);
     }
@@ -101,6 +105,7 @@ export default function Projects() {
     [load],
   );
 
+
   if (loading) {
     return <AsyncState loading />;
   }
@@ -110,6 +115,7 @@ export default function Projects() {
   if (projects.length === 0) {
     return <AsyncState empty emptyText="暂无项目：请先创建一个项目。" />;
   }
+
 
   return (
     <div className="stack">

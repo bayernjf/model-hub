@@ -105,6 +105,7 @@ input, select, textarea {
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .filters { display: flex; gap: 6px; flex-wrap: wrap; }
 .dim { color: var(--ink-dim); }
+.ok-text { color: var(--ok); font-size: 13px; }
 .error { color: var(--alert); font-size: 13px; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -159,6 +160,7 @@ input, select, textarea {
 .mini-field span { font-size: 11px; color: var(--ink-faint); }
 .mini-field input, .mini-field select { padding: 6px 8px; font-size: 12px; }
 
+
 /* @bayjf/console-ui: async-state — unified loading/empty/error three-state (UIUX P2 #8) */
 .async-state {
   display: flex;
@@ -175,3 +177,6 @@ input, select, textarea {
 .async-state--error .async-state__icon { color: var(--alert); }
 .async-state--error .async-state__text { color: var(--alert); }
 .async-state__retry { margin-top: 2px; }
+.mini-hint { font-size: 11px; color: var(--ink-faint); }
+.add-alias { margin: 8px 0 0 26px; }
+
