@@ -5,6 +5,7 @@ import {
   Loader2,
   Plus,
 } from 'lucide-react';
+import AsyncState from './AsyncState';
 import { apiFetch, apiJson } from './api';
 
 interface Project {
@@ -29,26 +30,34 @@ interface TokenView {
 export default function Projects() {
   const [projects, setProjects] = useState<ProjectDetail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [plainToken, setPlainToken] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    // The list endpoint returns summary rows; fetch details for tokens.
-    const list = await apiJson<{ projects: Project[] }>(
-      '/api/admin/projects',
-    );
-    const details = await Promise.all(
-      list.projects.map(async (p) => {
-        const d = await apiJson<{ project: ProjectDetail }>(
-          `/api/admin/projects/${p.id}`,
-        );
-        return d.project;
-      }),
-    );
-    setProjects(details);
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      // The list endpoint returns summary rows; fetch details for tokens.
+      const list = await apiJson<{ projects: Project[] }>(
+        '/api/admin/projects',
+      );
+      const details = await Promise.all(
+        list.projects.map(async (p) => {
+          const d = await apiJson<{ project: ProjectDetail }>(
+            `/api/admin/projects/${p.id}`,
+          );
+          return d.project;
+        }),
+      );
+      setProjects(details);
+    } catch (thrown) {
+      setLoadError(thrown instanceof Error ? thrown.message : String(thrown));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -92,7 +101,15 @@ export default function Projects() {
     [load],
   );
 
-  if (loading) return <Loader2 className="spin" />;
+  if (loading) {
+    return <AsyncState loading />;
+  }
+  if (loadError) {
+    return <AsyncState error={loadError} onRetry={() => void load()} />;
+  }
+  if (projects.length === 0) {
+    return <AsyncState empty emptyText="暂无项目：请先创建一个项目。" />;
+  }
 
   return (
     <div className="stack">

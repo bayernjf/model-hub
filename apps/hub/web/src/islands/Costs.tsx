@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import AsyncState from './AsyncState';
 import { apiJson } from './api';
 
 interface CostCell {
@@ -103,14 +104,22 @@ function Row({ split }: { split: SourceSplit }) {
 export default function Costs() {
   const [data, setData] = useState<CostsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [range, setRange] = useState<RangeKey>('all');
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     apiJson<CostsResponse>(`/api/admin/costs${windowQuery(range)}`)
       .then((d) => {
         if (!cancelled) setData(d);
+      })
+      .catch((thrown) => {
+        if (!cancelled) {
+          setLoadError(thrown instanceof Error ? thrown.message : String(thrown));
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -118,10 +127,11 @@ export default function Costs() {
     return () => {
       cancelled = true;
     };
-  }, [range]);
+  }, [range, attempt]);
 
-  if (loading && !data) return <p>加载中…</p>;
-  if (!data) return <p>无数据。</p>;
+  if (loading && !data) return <AsyncState loading />;
+  if (loadError) return <AsyncState error={loadError} onRetry={() => setAttempt((a) => a + 1)} />;
+  if (!data) return <AsyncState empty emptyText="暂无用量数据。" />;
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>

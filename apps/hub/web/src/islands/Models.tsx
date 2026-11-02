@@ -7,6 +7,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { apiFetch, apiJson } from './api';
+import AsyncState from './AsyncState';
 import type {
   ModelView,
   Provider,
@@ -72,14 +73,22 @@ export default function Models() {
   const [presets, setPresets] = useState<PresetProvider[]>([]);
   const [filter, setFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
   const [l2, setL2] = useState<Record<string, L2Result>>({});
   const [testing, setTesting] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const data = await apiJson<{ models: ModelView[] }>('/api/admin/models');
-    setModels(data.models);
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await apiJson<{ models: ModelView[] }>('/api/admin/models');
+      setModels(data.models);
+    } catch (thrown) {
+      setLoadError(thrown instanceof Error ? thrown.message : String(thrown));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -127,7 +136,15 @@ export default function Models() {
     (m) => filter === 'all' || m.modalities.includes(filter),
   );
 
-  if (loading) return <Loader2 className="spin" />;
+  if (loading) {
+    return <AsyncState loading />;
+  }
+  if (loadError) {
+    return <AsyncState error={loadError} onRetry={() => void load()} />;
+  }
+  if (filtered.length === 0) {
+    return <AsyncState empty emptyText="暂无模型：请先在厂商页接入或导入模型。" />;
+  }
 
   return (
     <div className="stack">

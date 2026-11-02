@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Trash2, Upload } from 'lucide-react';
+import AsyncState from './AsyncState';
 import { apiFetch, apiJson } from './api';
 
 interface Project {
@@ -170,9 +171,11 @@ export default function Knowledge() {
     }
   };
 
-  if (loading) return <p>加载中…</p>;
+  if (loading) return <AsyncState loading />;
   if (projects.length === 0) {
-    return <p className="dim">尚无项目：请先在「项目」页创建一个项目作为文档 owner。</p>;
+    return (
+      <AsyncState empty emptyText="尚无项目：请先在「项目」页创建一个项目作为文档 owner。" />
+    );
   }
 
   return (

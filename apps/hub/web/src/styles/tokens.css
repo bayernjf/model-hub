@@ -158,3 +158,20 @@ input, select, textarea {
 .mini-field { display: flex; flex-direction: column; gap: 4px; }
 .mini-field span { font-size: 11px; color: var(--ink-faint); }
 .mini-field input, .mini-field select { padding: 6px 8px; font-size: 12px; }
+
+/* @bayjf/console-ui: async-state — unified loading/empty/error three-state (UIUX P2 #8) */
+.async-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 16px;
+  color: var(--ink-dim);
+  font-size: 13px;
+}
+.async-state__icon { flex: none; color: var(--ink-faint); }
+.async-state__body { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.async-state__text { line-height: 1.5; }
+.async-state--error .async-state__icon { color: var(--alert); }
+.async-state--error .async-state__text { color: var(--alert); }
+.async-state__retry { margin-top: 2px; }
