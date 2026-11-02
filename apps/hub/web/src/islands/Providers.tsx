@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { apiFetch, apiJson } from './api';
 import KeyPool from './KeyPool';
+import AsyncState from './AsyncState';
 import type {
   Provider,
   PresetProvider,
@@ -124,16 +125,24 @@ export default function Providers() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [presets, setPresets] = useState<PresetProvider[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [results, setResults] = useState<Record<string, TestResult>>({});
   const [testing, setTesting] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const data = await apiJson<{ providers: Provider[] }>(
-      '/api/admin/providers',
-    );
-    setProviders(data.providers);
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await apiJson<{ providers: Provider[] }>(
+        '/api/admin/providers',
+      );
+      setProviders(data.providers);
+    } catch (thrown) {
+      setLoadError(thrown instanceof Error ? thrown.message : String(thrown));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -162,7 +171,15 @@ export default function Providers() {
     [runTest],
   );
 
-  if (loading) return <Loader2 className="spin" />;
+  if (loading) {
+    return <AsyncState loading />;
+  }
+  if (loadError) {
+    return <AsyncState error={loadError} onRetry={() => void load()} />;
+  }
+  if (providers.length === 0) {
+    return <AsyncState empty emptyText="暂无厂商：请新建一个厂商并配置 API Key。" />;
+  }
 
   return (
     <div className="stack">

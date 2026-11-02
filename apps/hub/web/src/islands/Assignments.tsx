@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Save } from 'lucide-react';
+import AsyncState from './AsyncState';
 import { apiFetch, apiJson } from './api';
 import type {
   ModelView,
@@ -178,7 +179,7 @@ export default function Assignments() {
   );
 
   if (projects.length === 0) {
-    return <p className="dim">请先在项目页创建项目。</p>;
+    return <AsyncState empty emptyText="请先在项目页创建项目。" />;
   }
 
   return (
@@ -211,7 +212,7 @@ export default function Assignments() {
       </div>
 
       {loading ? (
-        <Loader2 className="spin" />
+        <AsyncState loading />
       ) : (
         MODALITY_SECTIONS.map((section) => {
           const sectionModels = models.filter(
