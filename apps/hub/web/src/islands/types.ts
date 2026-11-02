@@ -10,6 +10,7 @@ export interface Provider {
   billing_type: string;
   api_key_hint: string | null;
   has_api_key: boolean;
+  key_cooldown_policy: string | null;
   enabled: boolean;
 }
 

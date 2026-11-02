@@ -10,6 +10,7 @@ import {
 } from '../repositories/reporting.js';
 import type { ProjectionService } from '../projection.js';
 import type { RevisionService } from '../revision.js';
+import type { ProviderKeyRepository } from '../repositories/provider-keys.js';
 import {
   evaluateBudgetWatermarks,
   type BudgetAlertWebhookConfig,
@@ -38,6 +39,7 @@ export interface PubDeps {
   budgetAlertFetch?: typeof fetch;
   projection: ProjectionService;
   revision: RevisionService;
+  providerKeyRepo?: ProviderKeyRepository;
 }
 
 export function pubRoutes(deps: PubDeps): Hono {
@@ -52,6 +54,7 @@ export function pubRoutes(deps: PubDeps): Hono {
     budgetAlertFetch,
     projection,
     revision,
+    providerKeyRepo,
   } = deps;
   const routes = new Hono();
 
@@ -277,6 +280,55 @@ export function pubRoutes(deps: PubDeps): Hono {
       ts: r.ts,
     });
 
+    return c.json({ accepted: true });
+  });
+
+  // Provider key pool events (design §5): model-kit reports a quota-class
+  // 429 so the hub cools that key per the provider policy. Best-effort: the
+  // request already succeeded via key failover, so this never blocks.
+  routes.post('/pub/v1/key-events', async (c) => {
+    const token = bearerToken(c);
+    if (!token) {
+      return c.json({ error: { code: 'unauthorized' } }, 401);
+    }
+    const auth = projectRepo.authenticateToken(token);
+    if (!auth) {
+      return c.json({ error: { code: 'unauthorized' } }, 401);
+    }
+    if (!providerKeyRepo) {
+      return c.json({ accepted: false, reason: 'key_pool_disabled' }, 200);
+    }
+
+    const body = (await c.req.json().catch(() => null)) as {
+      key_id?: unknown;
+      kind?: unknown;
+      code?: unknown;
+    } | null;
+    const keyId = typeof body?.key_id === 'string' ? body.key_id : null;
+    const kind = body?.kind;
+    if (!keyId || (kind !== 'quota_exhausted' && kind !== 'recovered')) {
+      return c.json({ error: { code: 'validation_error' } }, 400);
+    }
+    const code = typeof body?.code === 'string' ? body.code : null;
+
+    // Only cool keys bound to a provider this project actually uses, so a
+    // project token cannot cool arbitrary keys by id.
+    const providerIds = new Set(
+      assignmentRepo
+        .listByProject(auth.project.id)
+        .map((a) => modelRepo.get(a.model_id)?.provider_id)
+        .filter((id): id is string => typeof id === 'string'),
+    );
+    const key = providerKeyRepo.get(keyId);
+    if (!key || !providerIds.has(key.provider_id)) {
+      return c.json({ accepted: false, reason: 'out_of_scope' }, 404);
+    }
+
+    if (kind === 'quota_exhausted') {
+      providerKeyRepo.markQuotaExhausted(keyId, code);
+    } else {
+      providerKeyRepo.recover(keyId);
+    }
     return c.json({ accepted: true });
   });
 

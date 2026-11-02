@@ -6,6 +6,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { apiFetch, apiJson } from './api';
+import KeyPool from './KeyPool';
 import AsyncState from './AsyncState';
 import type {
   Provider,
@@ -228,6 +229,9 @@ export default function Providers() {
                       '测试连接'
                     )}
                   </button>
+                  <div style={{ marginTop: 8 }}>
+                    <KeyPool providerId={p.id} initialPolicy={p.key_cooldown_policy} />
+                  </div>
                 </td>
               </tr>
             ))}

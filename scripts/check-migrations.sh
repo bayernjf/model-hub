@@ -20,6 +20,7 @@ expected_tables=(
   login_attempts
   documents
   chunks
+  provider_keys
 )
 
 fail=0
