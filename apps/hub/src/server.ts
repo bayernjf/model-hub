@@ -22,7 +22,12 @@ if (applied.length > 0) {
 }
 
 const app = createApp(config, db);
-const honoListener = getRequestListener((request) => app.fetch(request));
+// Forward the node bindings (2nd arg) so getConnInfo can read the peer
+// socket; dropping it makes isLoopbackPeer fail closed and silently
+// disables HUB_DEV_NO_AUTH at runtime.
+const honoListener = getRequestListener((request, env) =>
+  app.fetch(request, env),
+);
 
 // The Astro SSR handler is built into web/dist. Resolve it via a computed URL
 // so the same relative path works from src/ and the compiled dist/ output.
