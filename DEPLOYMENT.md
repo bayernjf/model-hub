@@ -29,7 +29,9 @@ hub 宕机不影响已缓存调用。
    HUB_PORT=8791
    ```
 
-   生产**不要**设 `HUB_DEV_NO_AUTH`。
+   生产**不要**设 `HUB_DEV_NO_AUTH`；若误设，`NODE_ENV=production` 下
+   启动会直接抛 `ConfigError` 拒绝运行（同机反代使 socket peer 恒为
+   loopback，`isLoopbackPeer` 无法区分外部流量）。
 
    知识库（M3，可选）：要启用文档 ingest/问答，再配
    `KNOWLEDGE_PROJECT_TOKEN`（持有相关 alias 分配的消费项目 token）与
