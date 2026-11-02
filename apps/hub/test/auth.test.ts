@@ -317,4 +317,34 @@ describe('dev-no-auth mode', () => {
     });
     expect(res.status).toBe(401);
   });
+
+  // A same-host reverse proxy (the production Caddy topology) terminates the
+  // client connection and opens a new loopback socket to the hub, so the peer
+  // is 127.0.0.1 even for remote clients — XFF cannot help because
+  // isLoopbackPeer deliberately reads the socket, not headers. This test pins
+  // that gap: the loopback check alone CANNOT protect a production deployment,
+  // which is why loadConfig refuses HUB_DEV_NO_AUTH under NODE_ENV=production.
+  it('cannot tell a proxied remote client apart from a local one', async () => {
+    const config = loadConfig({
+      HUB_DEV_NO_AUTH: '1',
+      HUB_MASTER_KEY: '',
+      HUB_ADMIN_PASSWORD: '',
+    });
+    const db = openDatabase(':memory:');
+    const app = createApp(config, db);
+
+    const res = await app.request(
+      '/api/admin/session',
+      {
+        headers: {
+          Host: 'hub.internal',
+          // What Caddy would append for a client at 192.168.1.101.
+          'X-Forwarded-For': '192.168.1.101',
+        },
+      },
+      // The socket the hub actually sees behind a same-host proxy.
+      peerEnv('127.0.0.1'),
+    );
+    expect(res.status).toBe(200);
+  });
 });

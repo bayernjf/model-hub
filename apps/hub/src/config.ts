@@ -75,6 +75,21 @@ export function loadConfig(
   const operatorUsername = env.HUB_OPERATOR_USERNAME || 'operator';
   const operatorPassword = env.HUB_OPERATOR_PASSWORD || undefined;
 
+  // HUB_DEV_NO_AUTH is a local-development switch, never a production one.
+  // The production topology puts a same-host Caddy in front, so every socket
+  // peer is loopback and isLoopbackPeer() can no longer tell external traffic
+  // apart — the flag would hand a synthetic owner session to the whole
+  // network. Refuse to boot instead of silently downgrading.
+  if (devNoAuth && env.NODE_ENV === 'production') {
+    throw new ConfigError(
+      'HUB_DEV_NO_AUTH=1 is forbidden with NODE_ENV=production: behind the ' +
+        'production reverse proxy every socket peer is loopback, so the dev ' +
+        'switch would grant an owner session to all external traffic. ' +
+        'Fix: unset HUB_DEV_NO_AUTH (or set it to 0). For local development, ' +
+        'keep the switch but do not set NODE_ENV=production.',
+    );
+  }
+
   // Fail closed: the server must not start without secrets unless the
   // explicit local-development switch is set.
   if (!devNoAuth) {

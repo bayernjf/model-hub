@@ -57,6 +57,12 @@ const server = createServer((req, res) => {
 });
 
 server.listen(config.port, () => {
+  if (config.devNoAuth) {
+    console.error(
+      'WARNING: HUB_DEV_NO_AUTH=1 — admin auth is DISABLED for loopback peers. ' +
+        'Never use this outside local development.',
+    );
+  }
   const mode = config.devNoAuth ? ' (dev-no-auth)' : '';
   console.log(
     `model-hub listening on http://localhost:${config.port}${mode}, data=${config.dataDir}`,
