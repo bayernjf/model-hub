@@ -29,6 +29,9 @@ hub 宕机不影响已缓存调用。
    HUB_PORT=8791
    ```
 
+   `.env`（compose 变量替换文件）含真实密钥，权限必须 0600（`chmod 600 .env`），
+   与 `apps/hub/.env.local`、`apps/hub/data/model-hub.db` 同一纪律（AGENTS.md）。
+
    生产**不要**设 `HUB_DEV_NO_AUTH`；若误设，`NODE_ENV=production` 下
    启动会直接抛 `ConfigError` 拒绝运行（同机反代使 socket peer 恒为
    loopback，`isLoopbackPeer` 无法区分外部流量）。第二道防线：该开关
@@ -96,7 +99,9 @@ ls -lh ./backups/
 ## 备份与恢复
 
 - backup sidecar 每 `HUB_BACKUP_INTERVAL_SECONDS`（默认 86400）做一次一致性
-  `.backup` 快照，保留 `HUB_BACKUP_RETENTION_DAYS`（默认 7）天。
+  `.backup` 快照，保留 `HUB_BACKUP_RETENTION_DAYS`（默认 7）天。快照与 live 库
+  同级敏感（信封密文、token 哈希、审计 IP、全量配置），`backup-hub.sh` 以
+  `umask 077` + 显式 `chmod 600` 落盘，宿主 `./backups/` 下文件应为 0600。
 - 恢复：停容器 → 用任一快照替换卷内 `model-hub.db` → 启动 → 跑一次
   `/pub/v1/models` 冒烟。
 
