@@ -76,6 +76,37 @@ describe('loadConfig', () => {
     }
   });
 
+  it('refuses the dev switch when a master key is present', () => {
+    expect(() =>
+      loadConfig({ HUB_DEV_NO_AUTH: '1', HUB_MASTER_KEY: 'a'.repeat(32) }),
+    ).toThrow(/HUB_DEV_NO_AUTH.*never run with live secrets/s);
+  });
+
+  it('refuses the dev switch when an admin password is present', () => {
+    expect(() =>
+      loadConfig({ HUB_DEV_NO_AUTH: '1', HUB_ADMIN_PASSWORD: 'b'.repeat(16) }),
+    ).toThrow(/HUB_DEV_NO_AUTH.*never run with live secrets/s);
+  });
+
+  it('refuses the dev switch with both secrets present', () => {
+    // The realistic residual path: bare `node dist/server.js` with the
+    // production secrets exported and HUB_DEV_NO_AUTH=1 leaking in.
+    expect(() => loadConfig({ HUB_DEV_NO_AUTH: '1', ...validSecrets })).toThrow(
+      ConfigError,
+    );
+  });
+
+  it('treats empty-string secrets as unset under the dev switch', () => {
+    // The auth integration tests boot dev-no-auth with explicit empty
+    // strings; that stays legal because empty means "not configured".
+    const cfg = loadConfig({
+      HUB_DEV_NO_AUTH: '1',
+      HUB_MASTER_KEY: '',
+      HUB_ADMIN_PASSWORD: '',
+    });
+    expect(cfg.devNoAuth).toBe(true);
+  });
+
   it('loads a production config normally when the dev switch is absent or 0', () => {
     expect(
       loadConfig({ ...validSecrets, NODE_ENV: 'production' }).devNoAuth,

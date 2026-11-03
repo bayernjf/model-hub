@@ -90,6 +90,21 @@ export function loadConfig(
     );
   }
 
+  // Second line of defense: the dev switch must never coexist with live
+  // secrets. That combination means a production environment leaked into a
+  // dev-shaped invocation (e.g. bare `node dist/server.js` with the real
+  // secrets exported but NODE_ENV unset) — exactly the residual path where
+  // a same-host reverse proxy makes every socket peer loopback. Empty
+  // strings count as unset, matching the length checks below.
+  if (devNoAuth && (masterKey.length > 0 || adminPassword.length > 0)) {
+    throw new ConfigError(
+      'HUB_DEV_NO_AUTH=1 refuses to boot while HUB_MASTER_KEY or ' +
+        'HUB_ADMIN_PASSWORD is set: the dev switch must never run with live ' +
+        'secrets. Fix: unset HUB_DEV_NO_AUTH to run with real auth, or unset ' +
+        'the two secrets for pure local development.',
+    );
+  }
+
   // Fail closed: the server must not start without secrets unless the
   // explicit local-development switch is set.
   if (!devNoAuth) {
