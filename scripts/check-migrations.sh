@@ -28,7 +28,7 @@ expected_tables=(
 # per-file CREATE TABLE IF NOT EXISTS check below skips them.
 non_table_migrations=(
   009_model_reasoning.sql
-  014_allow_same_model_aliases.sql
+  016_allow_same_model_aliases.sql
 
 )
 
