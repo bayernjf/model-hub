@@ -29,6 +29,8 @@ jobs:
         run: npm install
       - name: Design tokens in sync
         run: npm run check:tokens
+      - name: Migration numbering + table set
+        run: npm run check:migrations
       - name: Typecheck
         run: npm run typecheck
       - name: Lint

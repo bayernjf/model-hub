@@ -23,7 +23,8 @@
     "test": "vitest run",
     "test:python": "python3 -m unittest discover -s clients/python/tests -t clients/python",
     "check:all": "npm run typecheck && npm run lint && npm run test && npm run test:python && npm run build",
-    "check:tokens": "node scripts/check-tokens.mjs apps/hub/web/src/styles/tokens.css apps/hub/web/src/styles/tokens.lock"
+    "check:tokens": "node scripts/check-tokens.mjs apps/hub/web/src/styles/tokens.css apps/hub/web/src/styles/tokens.lock",
+    "check:migrations": "bash scripts/check-migrations.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
