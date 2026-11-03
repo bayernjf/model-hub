@@ -70,6 +70,7 @@ function addTo(cell: CostCell, row: CostAggregateRow, withCost: boolean): void {
   if (withCost) cell.cost_micros += row.cost_micros;
 }
 
+
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Accepts "YYYY-MM-DD" (interpreted as a UTC day) or any parseable ISO-8601
@@ -193,6 +194,7 @@ export function budgetWatermarkRows(
   return rows;
 }
 
+
 export function adminCostRoutes(
   config: HubConfig,
   usageRepo: UsageRepository,
@@ -202,6 +204,7 @@ export function adminCostRoutes(
   routes.use('*', requireAdmin(config));
 
   routes.get('/costs', (c) => {
+
     let window: CostAggregateWindow | undefined;
     try {
       window = parseWindow(c.req.query());
@@ -210,6 +213,7 @@ export function adminCostRoutes(
       throw err;
     }
     const rows = usageRepo.aggregate(window);
+
 
     const byProject = new Map<string, SourceSplit>();
     const byModel = new Map<string, SourceSplit>();

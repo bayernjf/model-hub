@@ -21,6 +21,8 @@ expected_tables=(
   documents
   chunks
   provider_keys
+  budget_alerts
+  model_test_results
 )
 
 fail=0

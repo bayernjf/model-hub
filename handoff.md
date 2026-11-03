@@ -261,3 +261,116 @@
   数据卷 pack/unpack、云侧重新生成密钥、compose up、健康检查、Caddy 片段），
   DEPLOYMENT.md §云服务器迁移补「一键脚本」小节。提交 `0904acb`。
   执行仍待 owner 确认云服务器资源与时间。
+
+## 2026-10-29 zeus 决策模型接通（hub 侧分配，owner 授权「你搞」）
+
+目标：用 `ark-code-latest`（Ark Plan 订阅）替代已下线的 Jev/直连通道，作为
+zeus 决策后端；走 hub 主路径（非 env 直连）。以下条目本轮逐项核实/验证：
+
+- ~~启动本地 hub~~：`model-hub` 容器在跑（`docker compose`，healthy，
+  127.0.0.1:8791，含 backup sidecar），named volume `model-hub_model-hub-data`
+  数据完好。
+- ~~注册 zeus 项目 + token~~：`prj_8e9bf3701a8af05562d4fcdec29e3e2b`，
+  slug=`zeus`，enabled；token `tok_dbae45acbf22c0b59867cac0f7c81557`
+  （hint `****2329`，enabled）。
+- ~~启用 overlay~~：`ark-code-latest`（`mdl_6008b68bfbe5719f61d401af9262be45`）
+  enabled=1，modalities=text。
+- ~~建别名 assignments~~：zeus 项目下三个别名 `noul` / `choice` / `score`
+  均指向 ark-code-latest（role=primary，无日预算）。
+- ~~投影验证~~：zeus token 拉 `GET /pub/v1/models` 返回 revision **17**，
+  三个别名齐全（含 base_url `…/api/plan/v3`、直连凭证、chat 端点）。
+- ~~真实连通性复测~~：`POST /api/admin/models/:id/test`（L1）`ok=true`，
+  latency 2401ms，`model_echo=auto`（订阅套餐特征）。
+- ~~zeus 侧装配实测~~：`node --env-file=.env` 跑 `resolveDecisionConfigWithHub()`
+  返回 `backendKind='hub'`、backend 非 null（`hub:noul/choice/score`）、
+  hubTest present；不再是规则兜底。
+
+说明：上述项目/overlay/assignment 行在本轮接手时已存在（当日早些时候创建），
+本轮工作为「端到端核实 + 真实 L1 复测 + zeus 装配验证」，未重复创建、未 rotate token。
+
+待办：Jev 若后续提供 base_url/key，env 优先权仍保留、会自动胜出；视频/图片
+等其余 overlay 维持 enabled=0 安全默认；云服务器迁移仍待 owner 定（见上）。
+
+## 2026-10-29 五模态「分配 → model-kit 使用」闭环验证（第五会话）
+
+目标：验证 model-hub 完整闭环——维护模型 → 按 alias 分配给项目 → 产品侧用
+model-kit 以 alias 真实调用（不碰 URL/key/模型名）。
+
+- **分配**：smoke-proj（`prj_6cc0aed63d47127835aa8d8ae3b2ab99`）分配 5 个模型，
+  alias 如下（role=primary，无日预算）：
+  - `content` → ark-code-latest（text）
+  - `embed` → doubao-embedding-vision（embedding）
+  - `image` → doubao-seedream-5.0-flash（image）
+  - `video` → agnes-video-2.5-flash（video）
+  - `voice` → seed-tts-2.0（audio，OpenSpeech preset）
+- **model-kit 端到端真实调用结果**（`npx tsx`，hub=127.0.0.1:8791）：
+  - `chat("content")` → ✅ 200，1064 token 真实回答（ark-code-latest 路由到
+    Moonshot 系模型）
+  - `embed("embed")` → ✅ 200，2048 维向量
+  - `image("image")` → ✅ 200，真实生成 TOS URL（~11s）
+  - `tts("voice")` → ✅ 200，27693 字节 MP3（MPEG L3 64kbps/24kHz；adapter 的
+    auth_style=x-api-key / resource_id=seed-tts-2.0 / create_body 经投影正确下发）
+  - `video("video")` → ⚠️ 提交 body 正确、Agnes 接受，但 `video_queue_full`
+    （HTTP 503，平台队列满，未计费）
+- **过程清理**：验证时误建了重复语音 provider `Ark Plan Voice`
+  （`prov_b0ae6fc`）+ 手动模型 `doubao-seed-tts-2.0`（`mdl_f5392158`），已删除；
+  改用已有 OpenSpeech provider（`prov_4cc705`）+ preset `seed-tts-2.0`
+  （`mdl_e3fe5792`，enabled）。删除须先清 assignment 外键引用 → 删 model → 删
+  provider（migration 012 的 FOREIGN KEY 约束）。
+
+结论：**五模态「维护 → 分配 → 产品使用」闭环成立**，4 态真实跑通、video 受 Agnes
+队列满限制（代码链路已通）。产品侧统一用 model-kit 的 chat/embed/image/video/tts/asr，
+方言（X-Api-Key、异步轮询、非标 body、WebSocket）全由 hub 的 adapter 描述、model-kit
+执行，产品不碰 URL/key/模型名。
+
+## 2026-10-30 控制台交互加固（第六会话）
+
+UI/UX 评审定级 P0 的四条交互安全问题全部落地（仅 `apps/hub/web`，无服务端改动）：
+
+- **分配页保存护栏**（`c4f3ee0`）：整批保存是全量替换 PUT，误取消勾选会静默
+  吊销产品侧 alias。现在：工具栏常驻"未保存：新增 N · 移除 N · 修改 N"角标
+  （草稿 vs 服务端快照逐行 diff，alias/预算归一化比较，非法预算数字计为改动）；
+  存在移除时保存前 `confirm` 列出将被移除的模型名；无改动时提示"无改动"不发请求。
+- **切换项目丢弃前确认**（同上提交）：有未保存草稿时切换项目先确认，取消则
+  重挂 select 回退 DOM（`selectKey` remount）。
+- **保存反馈可辨**（同上提交）：成功 `--ok` 绿 / 失败 `--alert` 红 / 提示灰
+  （tokens 新增 `.ok-text`），容器加 `role="status"` + `aria-live="polite"；
+  修复保存失败也渲染成灰色 `.dim` 的问题。
+- **模型页停用护栏**（`5199e1b`）：拉 `GET /api/admin/assignments` 全量列表按
+  模型统计去重项目数，表格新增"分配"列（已分配 N 项目 tag）；停用已分配模型
+  前确认"这些项目的调用会立即失败"；启用 checkbox 补 `aria-label`。
+- 范围外未动：多 alias（migration 012）服务端已支持但分配页 UI 仍是一模型一
+  alias 草稿（后续任务）；P1（加载失败静默、L2 结果不持久、裸微美元输入、
+  搜索/日期过滤）未动。
+
+验证：`npm run check:all` 全绿（23 文件 / 188 用例 + Python 7 用例 + build）。
+环境注意：默认 shell Node 是 v20（Astro 7 拒跑），需前置 fnm 的 v22.23.1：
+`export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"`。
+**3 个提交待 owner 授权后 push**（c4f3ee0、5199e1b、本 handoff 提交）。
+
+## 2026-10-30 控制台 P1 + 多 alias 编辑器（第七会话）
+
+UI/UX 评审定级 P1 的四项与"分配页跟上 migration 012 多 alias 能力"全部落地，
+4 个 feature 提交（api 错误面先行，其后 costs/models/assignments 各自成提交）：
+
+- **加载失败可感知**（`22a0b88`）：`apiJson` 对非 2xx 抛 `ApiError`（原来非 401
+  错误不抛，失败会卡 loading 或渲染误导性空态）；五个 island 统一"错误横幅 +
+  重试"模式（projects/providers 在本提交，其余随各自 feature 提交落地）。
+- **成本页日期过滤**（`ae4f0e5`）：`GET /api/admin/costs` 支持 `from`/`to`
+  （含端日、YYYY-MM-DD 先校验再进 SQL），页面加日期输入 + 查询/清除。
+- **L2 测试结果持久化**（`fd8f2f4`）：migration 013 `model_test_results`
+  （append-only，按 MAX(rowid) 取每模型最新一条）；`GET /models` 返回
+  `last_tests`；badge 会话结果优先、否则回退持久化结果（tooltip 带测试时间）。
+  无 key 的探测也记 `unauthorized`。顺带修 `check-migrations.sh`（停在 008：
+  meta/login_attempts 未登记、009/012 的 ALTER/重建被误判），现 13 文件全绿。
+  模型页另加文本搜索（模型名/厂商/显示名）。
+- **分配页多 alias 编辑器**（`dc4b1fc`）：每模型可建多条 alias 条目（role/
+  alias/预算 + 移除 + "+ 添加 alias"）；保存护栏改为按归一化条目 diff
+  （编辑=移除+新增），移除确认列出"模型（alias）"；L4 健康标签按条目挂接；
+  预算输入下实时显示 ≈ USD/天。
+- 范围外未动：ops-console → hub 外链导航；产品族扩展方案中挂 hub 的三项
+  新能力（RAG / FinOps / voice-agent）；pricing 真实单价等 owner 输入项。
+
+验证：`npm run check:all` 全绿（**23 文件 / 193 用例**，+5：L2 持久化 3、
+costs 日期过滤 2）+ Python 7 用例 + build + `check:migrations` 13 文件全绿。
+**4 个提交待 owner 授权后 push**（22a0b88、ae4f0e5、fd8f2f4、dc4b1fc）。

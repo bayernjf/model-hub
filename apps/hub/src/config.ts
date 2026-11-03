@@ -75,6 +75,36 @@ export function loadConfig(
   const operatorUsername = env.HUB_OPERATOR_USERNAME || 'operator';
   const operatorPassword = env.HUB_OPERATOR_PASSWORD || undefined;
 
+  // HUB_DEV_NO_AUTH is a local-development switch, never a production one.
+  // The production topology puts a same-host Caddy in front, so every socket
+  // peer is loopback and isLoopbackPeer() can no longer tell external traffic
+  // apart — the flag would hand a synthetic owner session to the whole
+  // network. Refuse to boot instead of silently downgrading.
+  if (devNoAuth && env.NODE_ENV === 'production') {
+    throw new ConfigError(
+      'HUB_DEV_NO_AUTH=1 is forbidden with NODE_ENV=production: behind the ' +
+        'production reverse proxy every socket peer is loopback, so the dev ' +
+        'switch would grant an owner session to all external traffic. ' +
+        'Fix: unset HUB_DEV_NO_AUTH (or set it to 0). For local development, ' +
+        'keep the switch but do not set NODE_ENV=production.',
+    );
+  }
+
+  // Second line of defense: the dev switch must never coexist with live
+  // secrets. That combination means a production environment leaked into a
+  // dev-shaped invocation (e.g. bare `node dist/server.js` with the real
+  // secrets exported but NODE_ENV unset) — exactly the residual path where
+  // a same-host reverse proxy makes every socket peer loopback. Empty
+  // strings count as unset, matching the length checks below.
+  if (devNoAuth && (masterKey.length > 0 || adminPassword.length > 0)) {
+    throw new ConfigError(
+      'HUB_DEV_NO_AUTH=1 refuses to boot while HUB_MASTER_KEY or ' +
+        'HUB_ADMIN_PASSWORD is set: the dev switch must never run with live ' +
+        'secrets. Fix: unset HUB_DEV_NO_AUTH to run with real auth, or unset ' +
+        'the two secrets for pure local development.',
+    );
+  }
+
   // Fail closed: the server must not start without secrets unless the
   // explicit local-development switch is set.
   if (!devNoAuth) {

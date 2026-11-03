@@ -19,10 +19,39 @@ export async function apiFetch(
   return res;
 }
 
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+function errorMessage(status: number, body: unknown): string {
+  const err = (body as { error?: { code?: string; message?: string } }).error;
+  return err?.message ?? `请求失败（HTTP ${status}）`;
+}
+
+// JSON fetch that treats non-OK responses as errors. Load paths previously
+// assumed success and could hang on a spinner or render a misleading empty
+// state when the API failed; callers now catch and show a retry banner.
 export async function apiJson<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
   const res = await apiFetch(path, init);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, (body as { error?: { code?: string } }).error?.code ?? 'error', errorMessage(res.status, body));
+  }
   return (await res.json()) as T;
+}
+
+// Extract a human-readable message from a thrown value for error banners.
+export function errorText(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  return '加载失败';
 }

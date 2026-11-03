@@ -5,7 +5,7 @@ import {
   Plus,
   XCircle,
 } from 'lucide-react';
-import { apiFetch, apiJson } from './api';
+import { apiFetch, apiJson, errorText } from './api';
 import KeyPool from './KeyPool';
 import AsyncState from './AsyncState';
 import type {
@@ -130,27 +130,27 @@ export default function Providers() {
   const [results, setResults] = useState<Record<string, TestResult>>({});
   const [testing, setTesting] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+
+  const refresh = useCallback(async () => {
     setLoadError(null);
     try {
-      const data = await apiJson<{ providers: Provider[] }>(
-        '/api/admin/providers',
-      );
+      const [data, presetsData] = await Promise.all([
+        apiJson<{ providers: Provider[] }>('/api/admin/providers'),
+        apiJson<PresetsResponse>('/api/admin/presets'),
+      ]);
       setProviders(data.providers);
-    } catch (thrown) {
-      setLoadError(thrown instanceof Error ? thrown.message : String(thrown));
+      setPresets(presetsData.presets);
+    } catch (err) {
+      setLoadError(errorText(err));
+
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
-    void apiJson<PresetsResponse>('/api/admin/presets').then((d) =>
-      setPresets(d.presets),
-    );
-  }, [load]);
+    void refresh();
+  }, [refresh]);
 
   const runTest = useCallback(async (id: string) => {
     setTesting(id);
@@ -171,15 +171,17 @@ export default function Providers() {
     [runTest],
   );
 
+
   if (loading) {
     return <AsyncState loading />;
   }
   if (loadError) {
-    return <AsyncState error={loadError} onRetry={() => void load()} />;
+    return <AsyncState error={loadError} onRetry={() => void refresh()} />;
   }
   if (providers.length === 0) {
     return <AsyncState empty emptyText="暂无厂商：请新建一个厂商并配置 API Key。" />;
   }
+
 
   return (
     <div className="stack">

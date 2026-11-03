@@ -22,7 +22,12 @@ if (applied.length > 0) {
 }
 
 const app = createApp(config, db);
-const honoListener = getRequestListener((request) => app.fetch(request));
+// Forward the node bindings (2nd arg) so getConnInfo can read the peer
+// socket; dropping it makes isLoopbackPeer fail closed and silently
+// disables HUB_DEV_NO_AUTH at runtime.
+const honoListener = getRequestListener((request, env) =>
+  app.fetch(request, env),
+);
 
 // The Astro SSR handler is built into web/dist. Resolve it via a computed URL
 // so the same relative path works from src/ and the compiled dist/ output.
@@ -52,6 +57,12 @@ const server = createServer((req, res) => {
 });
 
 server.listen(config.port, () => {
+  if (config.devNoAuth) {
+    console.error(
+      'WARNING: HUB_DEV_NO_AUTH=1 — admin auth is DISABLED for loopback peers. ' +
+        'Never use this outside local development.',
+    );
+  }
   const mode = config.devNoAuth ? ' (dev-no-auth)' : '';
   console.log(
     `model-hub listening on http://localhost:${config.port}${mode}, data=${config.dataDir}`,
