@@ -14,6 +14,7 @@ interface ProviderRow {
   api_key_cipher: string | null;
   api_key_hint: string | null;
   enabled: number;
+  key_cooldown_policy: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -28,6 +29,7 @@ export interface ProviderView {
   billing_type: string;
   api_key_hint: string | null;
   has_api_key: boolean;
+  key_cooldown_policy: string | null;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -63,6 +65,7 @@ function toView(row: ProviderRow): ProviderView {
     billing_type: row.billing_type,
     api_key_hint: row.api_key_hint,
     has_api_key: row.api_key_cipher !== null,
+    key_cooldown_policy: row.key_cooldown_policy,
     enabled: row.enabled === 1,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -177,6 +180,20 @@ export class ProviderRepository {
   delete(id: string): boolean {
     const result = this.db.prepare('DELETE FROM providers WHERE id = ?').run(id);
     return Number(result.changes) > 0;
+  }
+
+  // Persist the key cooldown policy JSON (already normalized upstream).
+  setCooldownPolicy(id: string, policyJson: string): ProviderView | null {
+    const result = this.db
+      .prepare('UPDATE providers SET key_cooldown_policy = ?, updated_at = ? WHERE id = ?')
+      .run(policyJson, nowIso(), id);
+    if (Number(result.changes) === 0) return null;
+    return this.get(id);
+  }
+
+  // Raw policy JSON for a provider id (used by key-events cooldown math).
+  cooldownPolicy(id: string): string | null {
+    return this.rowById(id)?.key_cooldown_policy ?? null;
   }
 
   // Decrypt the stored API key (used by connection tests); null when absent.

@@ -65,6 +65,10 @@ export interface ProjectedModel {
   protocol: Protocol;
   base_url: string;
   api_key: string;
+  // Ordered credential pool for one provider (multiple equivalent keys, e.g.
+  // two Ark subscriptions). model-kit rotates within it on quota-class 429s.
+  // Absent/empty -> clients use api_key only (backward compatible).
+  api_keys?: ProjectedApiKey[] | undefined;
   endpoints: EndpointSet;
   adapter: AdapterConfig | null;
   context_window: number | null;
@@ -80,6 +84,22 @@ export interface CatalogResponse {
   fetched_at: string;
   models: ProjectedModel[];
 }
+
+// One credential in a provider's ordered key pool.
+export interface ProjectedApiKey {
+  key: string;
+  keyId: string;
+  label: string;
+}
+
+// Result of classifying a failed provider response.
+// - quota_exhausted: credential subscription is spent -> rotate key.
+// - rate_limited: ordinary throttling -> do not rotate.
+// - other: 401/403/5xx/network -> do not rotate.
+export type ProviderErrorKind =
+  | 'quota_exhausted'
+  | 'rate_limited'
+  | 'other';
 
 // Degradation provenance attached to a call result / stream chunk / usage
 // report when the kit rerouted the call away from the requested alias.
@@ -121,6 +141,8 @@ export interface ResolvedModel {
   protocol: Protocol;
   baseUrl: string;
   apiKey: string;
+  // Ordered credential pool (camelCase view of ProjectedModel.api_keys).
+  apiKeys?: ProjectedApiKey[] | undefined;
   endpoints: EndpointSet;
   adapter: AdapterConfig | null;
   contextWindow: number | null;

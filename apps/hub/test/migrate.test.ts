@@ -18,7 +18,7 @@ const EXPECTED_TABLES = [
   'chunks',
   'budget_alerts',
   'model_test_results',
-
+  'provider_keys',
 ];
 
 function freshDb(): DatabaseSync {
@@ -43,7 +43,7 @@ describe('SQLite migrations', () => {
     const db = freshDb();
     const applied = migrateUp(db);
 
-    expect(applied).toHaveLength(15);
+    expect(applied).toHaveLength(16);
     expect(userTableNames(db)).toEqual([...EXPECTED_TABLES].sort());
   });
 
@@ -60,14 +60,14 @@ describe('SQLite migrations', () => {
     const status = migrationStatus(db);
 
     expect(status.pending).toEqual([]);
-    expect(status.applied).toHaveLength(15);
+    expect(status.applied).toHaveLength(16);
   });
 
   it('reports all migrations pending on a fresh database', () => {
     const db = freshDb();
     const status = migrationStatus(db);
 
-    expect(status.pending).toHaveLength(15);
+    expect(status.pending).toHaveLength(16);
     expect(status.applied).toEqual([]);
   });
 });

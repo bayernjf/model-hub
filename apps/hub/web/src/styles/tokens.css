@@ -160,6 +160,28 @@ input, select, textarea {
 .mini-field span { font-size: 11px; color: var(--ink-faint); }
 .mini-field input, .mini-field select { padding: 6px 8px; font-size: 12px; }
 
+/* Provider key pool (multi-key quota failover) */
+.key-pool { margin-top: 6px; }
+.key-actions { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  border: var(--hair);
+  background: var(--steel-700);
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+.icon-btn:hover:not(:disabled) { background: var(--steel-600); color: var(--ink); }
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.icon-btn--danger:hover:not(:disabled) { background: var(--alert); color: var(--steel-950); }
+.key-add, .cooldown-policy { margin-top: 14px; padding-top: 12px; border-top: var(--hair); }
+.key-add h4, .cooldown-policy h4 { margin: 0 0 8px; font-size: 13px; }
+.cooldown-policy .field { max-width: 240px; margin-bottom: 8px; }
 
 /* @bayjf/console-ui: async-state — unified loading/empty/error three-state (UIUX P2 #8) */
 .async-state {

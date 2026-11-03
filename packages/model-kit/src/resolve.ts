@@ -19,6 +19,7 @@ export function toResolved(
     protocol: m.protocol,
     baseUrl: m.base_url,
     apiKey: m.api_key,
+    apiKeys: m.api_keys,
     endpoints: m.endpoints,
     adapter: m.adapter,
     contextWindow: m.context_window,
