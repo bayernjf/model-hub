@@ -31,7 +31,10 @@ hub 宕机不影响已缓存调用。
 
    生产**不要**设 `HUB_DEV_NO_AUTH`；若误设，`NODE_ENV=production` 下
    启动会直接抛 `ConfigError` 拒绝运行（同机反代使 socket peer 恒为
-   loopback，`isLoopbackPeer` 无法区分外部流量）。
+   loopback，`isLoopbackPeer` 无法区分外部流量）。第二道防线：该开关
+   与 `HUB_MASTER_KEY`/`HUB_ADMIN_PASSWORD` 同现时同样拒绝启动，
+   杜绝"带着真实密钥的 dev 模式"——本地纯开发使用该开关时，两个密钥
+   必须留空（空串视为未配置）。
 
    知识库（M3，可选）：要启用文档 ingest/问答，再配
    `KNOWLEDGE_PROJECT_TOKEN`（持有相关 alias 分配的消费项目 token）与
