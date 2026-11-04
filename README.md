@@ -54,8 +54,11 @@ contracts         下发契约 JSON Schema/OpenAPI（W1-1 起）
 ```bash
 npm run typecheck   # 各 workspace 类型检查
 npm run lint        # ESLint
-npm test            # Vitest
+npm test            # Vitest（TS/JS 单测 + 契约测试）
+npm run test:python # Python 客户端单测（python3 -m unittest）
 npm run build       # 各 workspace 构建
+npm run check:tokens     # 设计 token 与 tokens.lock 是否一致
+npm run check:migrations # 迁移编号连续 + 表集合校验
 npm run check:all   # 以上串行，每个 W 结束必须全绿
 ```
 
