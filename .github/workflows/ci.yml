@@ -26,7 +26,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       - name: Design tokens in sync
         run: npm run check:tokens
       - name: Migration numbering + table set
