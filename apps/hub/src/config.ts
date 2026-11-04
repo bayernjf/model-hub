@@ -27,6 +27,10 @@ export interface HubConfig {
   operatorPassword?: string;
   /** TCP port the HTTP server binds. */
   port: number;
+  /** Interface the HTTP server binds. Defaults to all interfaces so the
+   * container's published port keeps working; set HUB_HOST=127.0.0.1 for a
+   * bare-metal install behind a same-host reverse proxy. */
+  host: string;
   /** Directory for the SQLite database, cached projections, and key material. */
   dataDir: string;
   /** Disable admin auth for local development only (never on a shared host). */
@@ -54,6 +58,7 @@ export interface HubConfig {
 }
 
 const DEFAULT_PORT = 8791;
+const DEFAULT_HOST = '0.0.0.0';
 const DEFAULT_DATA_DIR = './data';
 
 function parsePort(raw: string | undefined): number {
@@ -63,6 +68,14 @@ function parsePort(raw: string | undefined): number {
     throw new ConfigError(`invalid HUB_PORT: ${raw}`);
   }
   return port;
+}
+
+function parseHost(raw: string | undefined): string {
+  if (raw === undefined || raw === '') return DEFAULT_HOST;
+  // Accept IPv4, bare IPv6 (::1), bracketed IPv6 ([::1]) and hostnames; reject
+  // anything that looks like a URL/scheme so a typo cannot silently bind wrong.
+  if (/^[A-Za-z0-9.:[\]-]+$/.test(raw)) return raw;
+  throw new ConfigError(`invalid HUB_HOST: ${raw}`);
 }
 
 export function loadConfig(
@@ -121,6 +134,7 @@ export function loadConfig(
   }
 
   const port = parsePort(env.HUB_PORT);
+  const host = parseHost(env.HUB_HOST);
   const dataDir = env.HUB_DATA_DIR || DEFAULT_DATA_DIR;
 
   return {
@@ -131,6 +145,7 @@ export function loadConfig(
     operatorUsername,
     ...(operatorPassword ? { operatorPassword } : {}),
     port,
+    host,
     dataDir,
     devNoAuth,
     knowledgeHubUrl:
