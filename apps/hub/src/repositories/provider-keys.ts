@@ -161,6 +161,49 @@ export class ProviderKeyRepository {
     }
   }
 
+  // Legacy `PATCH /api/admin/providers/:id { api_key }` compatibility. The
+  // projection prefers the pool once it is non-empty, so updating only the
+  // legacy provider column would silently not take effect. Mirror the re-sealed
+  // key into the highest-priority row (seq=0) instead, creating that row when
+  // the pool is still empty (provider created before its first pool add).
+  // Replacing the credential also clears quota cooling: the new key has its
+  // own quota, so a stale `quota_exhausted` state must not hide it.
+  syncPrimaryKey(providerId: string, apiKey: string): ProviderKeyView {
+    const now = nowIso();
+    const cipher = encrypt(apiKey, this.ring);
+    const hint = maskSecret(apiKey);
+    const first = this.db
+      .prepare(
+        'SELECT id FROM provider_keys WHERE provider_id = ? ORDER BY seq, id LIMIT 1',
+      )
+      .get(providerId) as { id: string } | undefined;
+
+    if (first) {
+      this.db
+        .prepare(
+          `UPDATE provider_keys
+             SET api_key_cipher = ?, api_key_hint = ?, status = 'ok',
+                 cooled_until = NULL, last_error_code = NULL, last_failed_at = NULL,
+                 updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(cipher, hint, now, first.id);
+      return this.get(first.id) as ProviderKeyView;
+    }
+
+    const id = newId('pkey');
+    this.db
+      .prepare(
+        `INSERT INTO provider_keys
+           (id, provider_id, label, api_key_cipher, api_key_hint, is_active,
+            status, cooled_until, last_error_code, last_failed_at, seq,
+            created_at, updated_at)
+         VALUES (?, ?, '', ?, ?, 1, 'ok', NULL, NULL, NULL, 0, ?, ?)`,
+      )
+      .run(id, providerId, cipher, hint, now, now);
+    return this.get(id) as ProviderKeyView;
+  }
+
   setActive(id: string, active: boolean): ProviderKeyView {
     if (!active) this.requireAnotherActive(id);
     this.db

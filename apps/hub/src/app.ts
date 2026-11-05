@@ -81,7 +81,7 @@ export function createApp(
   app.route('/api/admin', sessionRoutes(config, db));
   app.route(
     '/api/admin/providers',
-    providerRoutes(config, db, providerRepo, revision),
+    providerRoutes(config, db, providerRepo, providerKeyRepo, revision),
   );
   app.route(
     '/api/admin/providers',
