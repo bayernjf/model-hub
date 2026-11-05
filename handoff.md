@@ -1,5 +1,7 @@
 # model-hub handoff（D 组 M7 收尾，2026-10-28）
 
+> **2026-11-06 补登：dev → main 已于 2026-11-05 经 PR #14 合并（合并前 CI 全绿）；实测 origin/main 与 origin/dev 内容完全一致（git diff 为空）。**
+
 本文件记录 M7 收尾的工程进展；设计事实仍以 bayjf `docs/tier0/` 文档为准。
 
 ## 2026-11-05 复核（权限与过时表述）
