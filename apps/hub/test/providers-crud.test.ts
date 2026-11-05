@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildKeyRing } from '../src/crypto/keyring.js';
+import { ProviderKeyRepository } from '../src/repositories/provider-keys.js';
 import { ProviderRepository } from '../src/repositories/providers.js';
 import { login, makeTestApp } from './helpers.js';
 
@@ -110,6 +111,46 @@ describe('providers CRUD', () => {
 
     const repo = new ProviderRepository(db, buildKeyRing(config.masterKey));
     expect(repo.revealKey(id)).toBe('PLACEHOLDER_KEY_ark_rotated_9999');
+
+    // The pool row must carry the new credential too: the projection reads the
+    // pool first, so a legacy-column-only update would not take effect.
+    const keys = new ProviderKeyRepository(db, buildKeyRing(config.masterKey));
+    const pool = keys.listForProvider(id);
+    expect(pool).toHaveLength(1);
+    expect(pool[0]!.seq).toBe(0);
+    expect(pool[0]!.api_key_hint).toBe('****9999');
+    expect(keys.revealKey(pool[0]!.id)).toBe('PLACEHOLDER_KEY_ark_rotated_9999');
+  });
+
+  it('refreshes the existing pool row and clears cooling on key rotation', async () => {
+    const { app, db, config } = makeTestApp();
+    const cookie = await login(app);
+    const created = await app.request('/api/admin/providers',
+      jsonRequest(cookie, { method: 'POST', body: JSON.stringify(validProvider) }));
+    const id = ((await created.json()) as { provider: { id: string } }).provider.id;
+
+    const ring = buildKeyRing(config.masterKey);
+    const keys = new ProviderKeyRepository(db, ring);
+    // Seed the pool with exactly one row (the legacy key at seq=0).
+    const seeded = keys.syncPrimaryKey(id, validProvider.api_key);
+    const exhaustedUntil = '2026-11-03T00:00:00.000Z';
+    db.prepare(
+      "UPDATE provider_keys SET status='quota_exhausted', cooled_until=? WHERE id=?",
+    ).run(exhaustedUntil, seeded.id);
+
+    const res = await app.request(`/api/admin/providers/${id}`,
+      jsonRequest(cookie, {
+        method: 'PATCH',
+        body: JSON.stringify({ api_key: 'PLACEHOLDER_KEY_ark_rotated_9999' }),
+      }));
+    expect(res.status).toBe(200);
+
+    const pool = keys.listForProvider(id);
+    expect(pool).toHaveLength(1);
+    expect(pool[0]!.id).toBe(seeded.id);
+    expect(pool[0]!.status).toBe('ok');
+    expect(pool[0]!.cooled_until).toBeNull();
+    expect(keys.revealKey(seeded.id)).toBe('PLACEHOLDER_KEY_ark_rotated_9999');
   });
 
   it('rejects invalid protocol or base_url with 400', async () => {

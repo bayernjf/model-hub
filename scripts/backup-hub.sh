@@ -17,6 +17,11 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 
 mkdir -p "$BACKUP_DIR"
 
+# Snapshots written before the 0600 pin below may still be world-readable on
+# disk (review 2026-11-02 P2-2); normalize them once on start so a legacy file
+# cannot linger. New snapshots are chmod'ed explicitly in backup_once.
+find "$BACKUP_DIR" -name 'hub-*.db' -type f -exec chmod 600 {} +
+
 backup_once() {
   STAMP=$(date +%Y%m%d-%H%M%S)
   OUT="$BACKUP_DIR/hub-$STAMP.db"

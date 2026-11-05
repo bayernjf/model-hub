@@ -1,5 +1,9 @@
 # ---- builder: install full deps and compile all workspaces ----
-FROM node:22-slim AS builder
+# node:22-slim pinned by digest (Node 22.23.4 / bookworm-slim). Docker Hub is
+# unreachable from this workstation, so the digest comes from the locally
+# cached image (`node@sha256:de170b39…`); refresh it deliberately, never by
+# falling back to a floating tag.
+FROM node:22-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS builder
 WORKDIR /app
 
 # Copy workspace manifests first so dependency installation is cached
@@ -23,7 +27,7 @@ COPY apps/hub/web/src apps/hub/web/src
 RUN npm run build
 
 # ---- runner: production dependencies only, non-root ----
-FROM node:22-slim AS runner
+FROM node:22-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS runner
 ENV NODE_ENV=production \
     HUB_PORT=8791 \
     HUB_DATA_DIR=/data

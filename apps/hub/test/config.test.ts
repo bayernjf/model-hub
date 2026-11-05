@@ -128,4 +128,23 @@ describe('loadConfig', () => {
       ConfigError,
     );
   });
+
+  it('binds all interfaces by default and honours HUB_HOST', () => {
+    // Default must stay 0.0.0.0: the compose port mapping only works when the
+    // container listens on every interface.
+    expect(loadConfig(validSecrets).host).toBe('0.0.0.0');
+    expect(loadConfig({ ...validSecrets, HUB_HOST: '127.0.0.1' }).host).toBe(
+      '127.0.0.1',
+    );
+    expect(loadConfig({ ...validSecrets, HUB_HOST: '::1' }).host).toBe('::1');
+  });
+
+  it('rejects a HUB_HOST that looks like a URL or contains whitespace', () => {
+    expect(() =>
+      loadConfig({ ...validSecrets, HUB_HOST: 'http://127.0.0.1' }),
+    ).toThrow(ConfigError);
+    expect(() => loadConfig({ ...validSecrets, HUB_HOST: ' 127.0.0.1' })).toThrow(
+      ConfigError,
+    );
+  });
 });

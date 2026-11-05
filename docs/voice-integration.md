@@ -8,6 +8,9 @@
 - `X-Api-Key`: 专属 API Key（**新版控制台单头**；非 `Authorization: Bearer`，
   也非旧版 `X-Api-App-Id` + `X-Api-Access-Key` 双头）。
 - `X-Api-Resource-Id`: 模型资源标识，决定模型版本与计费。
+- `X-Control-Require-Usage-Tokens-Return: *`：请求响应回传 token 用量（不加则
+  响应不含 `usage`，无法统计 TTS 消耗）。`model-kit` 的 `synthesize` 已默认携带，
+  并在响应含 `usage` 时记录原始对象与 token 数（字段缺失时不伪造）。
 - `X-Api-Connect-Id` / `X-Api-Request-Id`: 每次请求的 UUID，便于排查。
 - 排查：始终记录响应头 `X-Tt-Logid`。
 

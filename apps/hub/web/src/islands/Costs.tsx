@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import AsyncState from './AsyncState';
-import { apiJson, errorText } from './api';
+import { apiJson } from './api';
 
 interface CostCell {
   calls: number;

@@ -47,6 +47,9 @@ CREATE INDEX idx_provider_keys_provider ON provider_keys(provider_id, is_active,
 - 迁移时把每个现存 `providers.api_key_cipher` 原样搬成一行 `provider_keys`
   （seq=0、status=ok），随后**保留** `providers.api_key_cipher/hint` 两列一个迁移周期
   （读路径：有 key 池读池，否则回落旧列），全部消费方升级后再出 015 迁移删旧列。
+- 旧接口 `PATCH /api/admin/providers/:id {api_key}` 仍可用，但会**同步写入池**
+  （更新 `seq` 最小的那行密文/hint，并清除旧的冷却状态；池为空时创建 seq=0 行），
+  避免出现"改了 key 但投影仍用旧 key"的静默失效。
 - 一个 provider 至少有一把 active key；删除"最后一把 active key"拒绝（409）。
 
 ## 3. 下发契约（/pub/v1/models）

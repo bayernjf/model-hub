@@ -8,7 +8,12 @@ import {
 } from '../../auth/middleware.js';
 import { writeAudit } from '../../audit.js';
 import type { HubConfig } from '../../config.js';
-import type { ProviderRepository } from '../../repositories/providers.js';
+import { isMasked } from '../../crypto/mask.js';
+import type { ProviderKeyRepository } from '../../repositories/provider-keys.js';
+import type {
+  ProviderRepository,
+  ProviderView,
+} from '../../repositories/providers.js';
 import type { RevisionService } from '../../revision.js';
 import {
   validateProviderCreate,
@@ -33,6 +38,7 @@ export function providerRoutes(
   config: HubConfig,
   db: DatabaseSync,
   repo: ProviderRepository,
+  keys: ProviderKeyRepository,
   revision: RevisionService,
 ): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
@@ -73,7 +79,26 @@ export function providerRoutes(
       const patch = validateProviderUpdate(
         await c.req.json().catch(() => null),
       );
-      const provider = repo.update(c.req.param('id'), patch);
+      const id = c.req.param('id');
+      let provider: ProviderView | null;
+      // A real (non-mask, non-empty) api_key must land in the key pool too,
+      // otherwise the projection keeps serving the old credential.
+      const newKey = patch.api_key;
+      if (typeof newKey === 'string' && newKey !== '' && !isMasked(newKey)) {
+        // One transaction so the legacy column and the pool never disagree.
+        db.exec('BEGIN');
+        try {
+          provider = repo.update(id, patch);
+          if (provider) keys.syncPrimaryKey(id, newKey);
+          db.exec('COMMIT');
+        } catch (err) {
+          db.exec('ROLLBACK');
+          throw err;
+        }
+      } else {
+        provider = repo.update(id, patch);
+      }
+
       if (!provider) return c.json({ error: { code: 'not_found' } }, 404);
       writeAudit(db, {
         actor: c.get('session')?.username ?? 'unknown',

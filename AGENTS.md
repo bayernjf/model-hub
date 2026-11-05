@@ -73,7 +73,7 @@ npm run check:all        # typecheck + lint + test + build 串行
 ## 环境变量（apps/hub）
 
 - 浏览器/进程公开：无（hub 不向浏览器暴露 key）。
-- 服务端：`HUB_MASTER_KEY`、`HUB_ADMIN_PASSWORD`、`HUB_PORT`、
+- 服务端：`HUB_MASTER_KEY`、`HUB_ADMIN_PASSWORD`、`HUB_PORT`、`HUB_HOST`、
   `HUB_DATA_DIR`、`HUB_DEV_NO_AUTH`（见 `apps/hub/.env.example`）。
 - 知识库（可选，M3）：`KNOWLEDGE_PROJECT_TOKEN`、`KNOWLEDGE_HUB_URL`、
   `KNOWLEDGE_EMBED_ALIAS`、`KNOWLEDGE_RERANK_ALIAS`、`KNOWLEDGE_ANSWER_ALIAS`；

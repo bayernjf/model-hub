@@ -23,7 +23,9 @@ services:
   # SQLite snapshot loop (scripts/backup-hub.sh): consistent .backup copies to
   # a host-mounted ./backups dir, pruned after RETENTION_DAYS.
   backup:
-    image: node:22-slim
+    # Same pinned image as the app stages (Node 22.23.4); digest rationale in
+    # the Dockerfile header.
+    image: node:22-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
     depends_on:
       - model-hub
     volumes:

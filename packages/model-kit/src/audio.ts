@@ -12,11 +12,55 @@ function joinUrl(base: string, path: string): string {
   return `${b}${p}`;
 }
 
+// Opt-in header from the Agent Plan voice doc; without it the TTS response
+// carries no token usage, so spend cannot be accounted for.
+const USAGE_TOKENS_HEADER = 'X-Control-Require-Usage-Tokens-Return';
+const USAGE_TOKENS_VALUE = '*';
+
+// Provider candidates for the token count inside a `usage` object. Only a
+// numeric value is accepted; nothing is inferred when the field is absent.
+const USAGE_TOKEN_FIELDS = ['total_tokens', 'tokens', 'usage_tokens'] as const;
+
+// The Doubao HTTP TTS response is newline-delimited JSON chunks. Collect the
+// first `usage` object it reports, if any.
+function readUsage(text: string): Record<string, unknown> | null {
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as { usage?: unknown };
+      if (
+        typeof parsed.usage === 'object' &&
+        parsed.usage !== null &&
+        !Array.isArray(parsed.usage)
+      ) {
+        return parsed.usage as Record<string, unknown>;
+      }
+    } catch {
+      // Ignore non-JSON segments; audio decoding below is unaffected.
+    }
+  }
+  return null;
+}
+
+function readUsageTokens(usage: Record<string, unknown> | null): number | null {
+  if (!usage) return null;
+  for (const field of USAGE_TOKEN_FIELDS) {
+    const value = usage[field];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
 export interface TtsResult {
   audio: Uint8Array | null;
   url: string | null;
   httpStatus: number;
   raw: string;
+  /** Token count echoed by the provider, when its usage field carries one. */
+  usageTokens: number | null;
+  /** Raw provider `usage` object (shape owned by the provider); null if absent. */
+  usage: Record<string, unknown> | null;
   /** Set when the kit rerouted the call to a fallback (budget governance). */
   degraded?: DegradationInfo | undefined;
 }
@@ -43,6 +87,7 @@ export async function synthesize(
   if (xApiKey) {
     headers['X-Api-Key'] = call.model.apiKey;
     if (a?.resource_id) headers['X-Api-Resource-Id'] = a.resource_id;
+    headers[USAGE_TOKENS_HEADER] = USAGE_TOKENS_VALUE;
   } else {
     headers['Authorization'] = `Bearer ${call.model.apiKey}`;
   }
@@ -60,6 +105,8 @@ export async function synthesize(
   });
 
   const text = await res.text();
+  const usage = readUsage(text);
+  const usageTokens = readUsageTokens(usage);
 
   let audio: Uint8Array | null = null;
   let urlOut: string | null = null;
@@ -83,5 +130,5 @@ export async function synthesize(
     }
   }
 
-  return { audio, url: urlOut, httpStatus: res.status, raw: text };
+  return { audio, url: urlOut, httpStatus: res.status, raw: text, usage, usageTokens };
 }

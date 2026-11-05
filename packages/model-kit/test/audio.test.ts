@@ -58,10 +58,68 @@ describe('tts driver', () => {
 
     expect(headers['X-Api-Key']).toBe('key');
     expect(headers['X-Api-Resource-Id']).toBe('seed-tts-2.0');
+    expect(headers['X-Control-Require-Usage-Tokens-Return']).toBe('*');
     expect(headers['Authorization']).toBeUndefined();
     expect(body).toContain('"text":"你好"');
     expect(body).toContain('zh_female_vv_uranus_bigtts');
     expect(result.audio).not.toBeNull();
     expect(new TextDecoder().decode(result.audio!)).toBe('fake-audio-bytes');
+    // The provider did not report usage in this response: nothing invented.
+    expect(result.usage).toBeNull();
+    expect(result.usageTokens).toBeNull();
+  });
+
+  it('records provider usage tokens when the final chunk reports them', async () => {
+    const audioB64 = Buffer.from('fake-audio-bytes').toString('base64');
+    const fake = (async () =>
+      new Response(
+        [
+          `{"code":0,"data":"${audioB64}"}`,
+          '{"code":20000000,"usage":{"text_words":6,"total_tokens":42}}',
+        ].join('\n'),
+        { status: 200 },
+      )) as typeof fetch;
+
+    const result = await synthesize(
+      {
+        model: model({
+          adapter: {
+            submit_path: '/api/v3/plan/tts/unidirectional',
+            auth_style: 'x-api-key',
+            resource_id: 'seed-tts-2.0',
+          },
+        }),
+        text: '你好',
+      },
+      fake,
+    );
+
+    expect(result.usageTokens).toBe(42);
+    expect(result.usage).toEqual({ text_words: 6, total_tokens: 42 });
+    expect(new TextDecoder().decode(result.audio!)).toBe('fake-audio-bytes');
+  });
+
+  it('keeps usage unset when a usage object has no token field', async () => {
+    const fake = (async () =>
+      new Response('{"code":20000000,"usage":{"text_words":6}}', {
+        status: 200,
+      })) as typeof fetch;
+
+    const result = await synthesize(
+      {
+        model: model({
+          adapter: {
+            submit_path: '/api/v3/plan/tts/unidirectional',
+            auth_style: 'x-api-key',
+            resource_id: 'seed-tts-2.0',
+          },
+        }),
+        text: '你好',
+      },
+      fake,
+    );
+
+    expect(result.usage).toEqual({ text_words: 6 });
+    expect(result.usageTokens).toBeNull();
   });
 });

@@ -56,7 +56,7 @@ const server = createServer((req, res) => {
   }
 });
 
-server.listen(config.port, () => {
+server.listen(config.port, config.host, () => {
   if (config.devNoAuth) {
     console.error(
       'WARNING: HUB_DEV_NO_AUTH=1 — admin auth is DISABLED for loopback peers. ' +
@@ -64,7 +64,15 @@ server.listen(config.port, () => {
     );
   }
   const mode = config.devNoAuth ? ' (dev-no-auth)' : '';
+  // Log the address the socket actually bound, not the configured host:
+  // `0.0.0.0` and `::` are what the OS reports for "all interfaces".
+  const address = server.address();
+  const boundHost =
+    typeof address === 'object' && address ? address.address : config.host;
+  const boundPort =
+    typeof address === 'object' && address ? address.port : config.port;
+  const shownHost = boundHost.includes(':') ? `[${boundHost}]` : boundHost;
   console.log(
-    `model-hub listening on http://localhost:${config.port}${mode}, data=${config.dataDir}`,
+    `model-hub listening on http://${shownHost}:${boundPort}${mode}, data=${config.dataDir}`,
   );
 });
