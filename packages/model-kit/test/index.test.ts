@@ -19,6 +19,6 @@ describe('model-kit baseline', () => {
   });
 
   it('exposes the kit version', () => {
-    expect(KIT_VERSION).toBe('0.2.0');
+    expect(KIT_VERSION).toBe('0.3.0');
   });
 });
