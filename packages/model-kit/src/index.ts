@@ -517,6 +517,9 @@ export {
 } from './driver.js';
 export type {
   ChatMessage,
+  ContentPart,
+  TextContentPart,
+  ImageUrlContentPart,
   ChatResult,
   StreamChunk,
   TokenUsage,

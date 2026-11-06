@@ -9,9 +9,28 @@ import {
   classifyProviderError,
 } from './provider-errors.js';
 
+/**
+ * One multimodal content part (OpenAI-compatible shape). Vision-language
+ * models accept `image_url`; text-only models ignore the extra parts. The
+ * driver passes these through verbatim, so a string message stays a string
+ * and existing callers are byte-for-byte unaffected.
+ */
+export interface TextContentPart {
+  type: 'text';
+  text: string;
+}
+
+export interface ImageUrlContentPart {
+  type: 'image_url';
+  image_url: { url: string; detail?: 'auto' | 'low' | 'high' };
+}
+
+export type ContentPart = TextContentPart | ImageUrlContentPart;
+
 export interface ChatMessage {
   role: string;
-  content: string;
+  /** Plain text (existing path) or structured multimodal parts for VLM calls. */
+  content: string | ContentPart[];
 }
 
 export interface TokenUsage {
