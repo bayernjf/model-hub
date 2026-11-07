@@ -38,7 +38,9 @@ npm run dev                                     # http://localhost:8791/healthz
 ```
 
 ```bash
-docker compose up --build                       # 绑定 127.0.0.1:8791
+# docker compose 读取仓库根 `.env`（不是 apps/hub/.env.local）：
+cp apps/hub/.env.example .env && chmod 600 .env  # 填入 HUB_MASTER_KEY / HUB_ADMIN_PASSWORD
+docker compose up --build                        # 绑定 127.0.0.1:8791
 ```
 
 ## 仓库结构
