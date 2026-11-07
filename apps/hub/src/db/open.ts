@@ -7,7 +7,9 @@ import type { DatabaseSync } from 'node:sqlite';
 // this experimental module (and strip the node: prefix) leave it to the Node
 // runtime instead of trying to resolve a bare "sqlite" import.
 const nodeRequire = createRequire(import.meta.url);
-const sqlite = nodeRequire('node:sqlite') as typeof import('node:sqlite');
+// Exported so other modules reuse the same runtime resolution instead of
+// importing `node:sqlite` directly (Vite cannot resolve the experimental builtin).
+export const sqlite = nodeRequire('node:sqlite') as typeof import('node:sqlite');
 
 // Open (or create) the SQLite database file. The parent directory and the
 // database file hold encrypted keys and sensitive data, so they are forced
