@@ -9,8 +9,8 @@ services:
     image: model-hub:latest
     container_name: model-hub
     environment:
-      HUB_MASTER_KEY: ${HUB_MASTER_KEY:?set HUB_MASTER_KEY in .env.local}
-      HUB_ADMIN_PASSWORD: ${HUB_ADMIN_PASSWORD:?set HUB_ADMIN_PASSWORD in .env.local}
+      HUB_MASTER_KEY: ${HUB_MASTER_KEY:?set HUB_MASTER_KEY in the repo-root .env}
+      HUB_ADMIN_PASSWORD: ${HUB_ADMIN_PASSWORD:?set HUB_ADMIN_PASSWORD in the repo-root .env}
       HUB_PORT: "8791"
       HUB_DATA_DIR: /data
     ports:

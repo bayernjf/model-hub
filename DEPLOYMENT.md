@@ -12,7 +12,7 @@ Tailscale / LAN
      │ 内网反代
   model-hub 容器（docker-compose.yml，loopback 127.0.0.1:8791）
      │ 挂载卷 model-hub-data → /data（SQLite 文件）
-  backup sidecar：每天一次 sqlite3 .backup → 宿主 ./backups，保留 7 天
+  backup sidecar：每天一次 `VACUUM INTO` 一致性快照（node:sqlite）→ 宿主 ./backups，保留 7 天
 ```
 
 zeus / loom 容器内以 `http://model-hub:8791`（同 compose 内网）或
@@ -21,16 +21,17 @@ hub 宕机不影响已缓存调用。
 
 ## 首次部署
 
-1. 在宿主机拉取本仓，复制 `.env.local`（不入库）：
+1. 在宿主机拉取本仓，从 `apps/hub/.env.example` 复制两份（均不入库）：
 
    ```bash
-   HUB_MASTER_KEY=<长随机串，>=16 字符>
-   HUB_ADMIN_PASSWORD=<强口令，>=12 字符>
-   HUB_PORT=8791
+   cp apps/hub/.env.example .env              # docker compose 变量替换文件
+   cp apps/hub/.env.example apps/hub/.env.local  # 本地/裸机 npm run dev 使用
    ```
 
-   `.env`（compose 变量替换文件）含真实密钥，权限必须 0600（`chmod 600 .env`），
-   与 `apps/hub/.env.local`、`apps/hub/data/model-hub.db` 同一纪律（AGENTS.md）。
+   在 `.env` 中填入真实密钥（`HUB_MASTER_KEY=<长随机串，>=16 字符>`、
+   `HUB_ADMIN_PASSWORD=<强口令，>=12 字符>`、`HUB_PORT=8791`），权限必须
+   0600（`chmod 600 .env apps/hub/.env.local`），与 `apps/hub/data/model-hub.db`
+   同一纪律（AGENTS.md）。
 
    生产**不要**设 `HUB_DEV_NO_AUTH`；若误设，`NODE_ENV=production` 下
    启动会直接抛 `ConfigError` 拒绝运行（同机反代使 socket peer 恒为
@@ -104,6 +105,11 @@ ls -lh ./backups/
   `umask 077` + 显式 `chmod 600` 落盘，宿主 `./backups/` 下文件应为 0600。
 - 恢复：停容器 → 用任一快照替换卷内 `model-hub.db` → 启动 → 跑一次
   `/pub/v1/models` 冒烟。
+- 破坏性迁移（如 016 重建 `assignments`）：迁移器在**已有数据**的数据库上执行
+  前强制校验快照——文件存在、非 0 字节、权限 0600、`integrity_check=ok`、
+  且账本行数与当前库一致；任一不满足即拒绝执行，**没有绕过参数**。容器内需
+  `-v "$PWD/backups:/backups:ro"` 并设 `HUB_BACKUP_PATH=/backups/<快照>`；
+  不设则取仓库 `backups/` 下最新的 `hub-*.db`。全新数据库不受此限。
 
 ## 凭证纪律
 
@@ -120,7 +126,8 @@ ls -lh ./backups/
 2. **迁移数据卷**：本机
    `docker run --rm -v model-hub_model-hub-data:/data -v "$PWD":/bak alpine tar czf /bak/model-hub-data.tgz -C /data .`，
    云主机解包到同名 volume（或直接 `scp` 备份快照恢复）。
-3. **配置**：云主机 `cp .env.example .env.local` 并重新生成
+3. **配置**：云主机 `cp apps/hub/.env.example .env.local`，并同样复制一份为
+   仓库根 `.env`（docker compose 变量替换文件）；重新生成
    `HUB_MASTER_KEY` / `HUB_ADMIN_PASSWORD`（**不复制本机明文密钥**）。
 4. **启动**：同一份 `docker-compose.yml` 在云主机 `docker compose up -d --build`，
    无需任何 Dockerfile/compose 改动。
