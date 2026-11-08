@@ -34,18 +34,52 @@ export class BudgetStateError extends Error {
   }
 }
 
+/** Where an over-budget call was blocked, for logs and operator display. */
+export interface BudgetExceededContext {
+  assignmentId: string;
+  model: string;
+  role: string;
+  /** UTC day of the budget window (from the usage summary); null if unknown. */
+  day: string | null;
+  /** Timestamp of the usage snapshot the decision used; null if unknown. */
+  usageAsOf: string | null;
+  modality: string;
+}
+
 export class BudgetExceededError extends Error {
   readonly code = 'BUDGET_EXCEEDED';
+  readonly assignmentId: string | null;
+  readonly model: string | null;
+  readonly role: string | null;
+  readonly day: string | null;
+  readonly usageAsOf: string | null;
+  readonly modality: string | null;
 
   constructor(
     readonly alias: string,
     readonly spentMicros: number,
     readonly dailyBudgetMicros: number,
+    context?: BudgetExceededContext,
   ) {
+    const usd = (micros: number): string => `${(micros / 1_000_000).toFixed(4)} USD`;
+    const where = context
+      ? ` (assignment '${context.assignmentId}', model '${context.model}', role ${context.role})`
+      : '';
+    const window = context?.day ? ` on UTC day ${context.day}` : ' today';
+    const asOf = context?.usageAsOf ? ` (usage snapshot ${context.usageAsOf})` : '';
+    const modality = context ? ` for modality '${context.modality}'` : '';
     super(
-      `BUDGET_EXCEEDED: alias '${alias}' spent ${spentMicros} of ${dailyBudgetMicros} micros today and no fallback with remaining budget is available`,
+      `BUDGET_EXCEEDED: alias '${alias}'${where} spent ${spentMicros} of ${dailyBudgetMicros} micros`
+        + ` (${usd(spentMicros)} of ${usd(dailyBudgetMicros)})${window}${asOf};`
+        + ` no fallback${modality} has remaining budget`,
     );
     this.name = 'BudgetExceededError';
+    this.assignmentId = context?.assignmentId ?? null;
+    this.model = context?.model ?? null;
+    this.role = context?.role ?? null;
+    this.day = context?.day ?? null;
+    this.usageAsOf = context?.usageAsOf ?? null;
+    this.modality = context?.modality ?? null;
   }
 }
 
@@ -172,6 +206,14 @@ export function pickModelForCall(
   throw new BudgetExceededError(
     alias,
     state.spentMicros,
-    model.dailyBudgetMicros,
+    model.dailyBudgetMicros ?? 0,
+    {
+      assignmentId: model.assignmentId,
+      model: model.model,
+      role: model.role,
+      day: summary?.day ?? null,
+      usageAsOf: summary?.generated_at ?? null,
+      modality,
+    },
   );
 }
