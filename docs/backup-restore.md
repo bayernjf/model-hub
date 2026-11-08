@@ -57,4 +57,25 @@ docker compose start model-hub
 | 未迁移库快照 | 拒绝（`not a migrated model-hub database`），`exit 1` |
 | 未设 `HUB_MASTER_KEY` | 恢复成功 + 密钥缺失警告 |
 
-尚未做：异地副本。
+### 5.1 季度复跑（2026-11-08 实际执行）
+
+从当日快照恢复到临时目录，不碰生产库：
+
+```bash
+rm -rf /tmp/drill-mh && mkdir -p /tmp/drill-mh
+node --experimental-sqlite scripts/restore-hub.mjs \
+  --snapshot ./backups/hub-20261108-104639.db --target-db /tmp/drill-mh/hub.db
+```
+
+实际输出：
+
+```text
+restored /tmp/drill-mh/hub.db from ./backups/hub-20261108-104639.db
+  (projects=3 provider_keys=3 tokens=4 assignments=9 usage_events=6 documents=0 chunks=0)
+restore-hub: HUB_MASTER_KEY is not set — provider-key envelopes will not decrypt.
+```
+
+`exit 0`，产物权限 `0600`。恢复成功但密文不可解，说明密钥必须独立保管。
+
+尚未做：异地副本；发布流程里仍未强制先 `docker tag` 留上一版。
+
