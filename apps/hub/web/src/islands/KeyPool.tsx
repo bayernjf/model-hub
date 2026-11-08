@@ -10,7 +10,7 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react';
-import { apiFetch, apiJson } from './api';
+import { apiFetch, apiJson, errorText } from './api';
 
 export interface ProviderKey {
   id: string;
@@ -76,6 +76,7 @@ export default function KeyPool({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, TestState>>({});
   const [newLabel, setNewLabel] = useState('');
   const [newKey, setNewKey] = useState('');
@@ -83,11 +84,17 @@ export default function KeyPool({
   const [policySaved, setPolicySaved] = useState(false);
 
   const load = useCallback(async () => {
-    const data = await apiJson<{ keys: ProviderKey[] }>(
-      `/api/admin/providers/${providerId}/keys`,
-    );
-    setKeys(data.keys.sort((a, b) => a.seq - b.seq));
-    setLoaded(true);
+    try {
+      const data = await apiJson<{ keys: ProviderKey[] }>(
+        `/api/admin/providers/${providerId}/keys`,
+      );
+      setKeys(data.keys.sort((a, b) => a.seq - b.seq));
+      setLoadError(null);
+      setLoaded(true);
+    } catch (err) {
+      // Keep any previously loaded rows; only annotate that they may be stale.
+      setLoadError(errorText(err));
+    }
   }, [providerId]);
 
   const toggle = async () => {
@@ -104,17 +111,25 @@ export default function KeyPool({
   const runAction = async (id: string, fn: () => Promise<Response>, refresh = true): Promise<boolean> => {
     setBusy(id);
     setError(null);
-    const res = await fn();
-    setBusy(null);
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: { message?: string; code?: string };
-      };
-      flashError(data.error?.message ?? data.error?.code ?? '操作失败');
+    try {
+      const res = await fn();
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string; code?: string };
+        };
+        flashError(data.error?.message ?? data.error?.code ?? `操作失败（HTTP ${res.status}）`);
+        return false;
+      }
+      if (refresh) await load();
+      return true;
+    } catch {
+      // Transport failure: without this the busy flag never clears and every
+      // action in the pool stays disabled for the rest of the session.
+      flashError('网络异常，请重试：无法连接服务器。');
       return false;
+    } finally {
+      setBusy(null);
     }
-    if (refresh) await load();
-    return true;
   };
 
   const addKey = async () => {
@@ -161,39 +176,63 @@ export default function KeyPool({
 
   const testKey = async (id: string) => {
     setBusy(`test-${id}`);
-    const res = await apiFetch(
-      `/api/admin/providers/${providerId}/keys/${id}/test`,
-      { method: 'POST' },
-    );
-    const data = (await res.json()) as TestState & {
-      ok: boolean;
-      error?: { code?: string; hint?: string };
-    };
-    const state: TestState = {
-      ok: data.ok,
-      ...(typeof data.latency_ms === 'number' ? { latency_ms: data.latency_ms } : {}),
-      ...(data.error?.code ? { errorCode: data.error.code } : {}),
-      ...(data.error?.hint ? { hint: data.error.hint } : {}),
-    };
-    setTests((prev) => ({ ...prev, [id]: state }));
-    setBusy(null);
-    await load(); // status may flip if quota was the failure
+    setError(null);
+    try {
+      const res = await apiFetch(
+        `/api/admin/providers/${providerId}/keys/${id}/test`,
+        { method: 'POST' },
+      );
+      const data = (await res.json().catch(() => null)) as
+        | (TestState & { ok?: boolean; error?: { code?: string; hint?: string; message?: string } })
+        | null;
+      if (!res.ok || !data) {
+        const hint = data?.error?.message ?? data?.error?.hint;
+        setTests((prev) => ({
+          ...prev,
+          [id]: { ok: false, errorCode: `HTTP ${res.status}`, ...(hint ? { hint } : {}) },
+        }));
+        flashError(hint ?? `测试请求失败（HTTP ${res.status}）`);
+      } else {
+        const state: TestState = {
+          ok: Boolean(data.ok),
+          ...(typeof data.latency_ms === 'number' ? { latency_ms: data.latency_ms } : {}),
+          ...(data.error?.code ? { errorCode: data.error.code } : {}),
+          ...(data.error?.hint ? { hint: data.error.hint } : {}),
+        };
+        setTests((prev) => ({ ...prev, [id]: state }));
+        await load(); // status may flip if quota was the failure
+      }
+    } catch {
+      setTests((prev) => ({ ...prev, [id]: { ok: false, errorCode: 'network' } }));
+      flashError('测试失败：网络异常，无法连接服务器。');
+    } finally {
+      setBusy(null);
+    }
   };
 
   const activeCount = keys.filter((k) => k.is_active).length;
 
   const savePolicy = async () => {
     setBusy('policy');
-    const res = await apiFetch(
-      `/api/admin/providers/${providerId}/cooldown-policy`,
-      { method: 'PUT', body: JSON.stringify(policy) },
-    );
-    setBusy(null);
-    if (res.ok) {
-      setPolicySaved(true);
-      window.setTimeout(() => setPolicySaved(false), 2500);
-    } else {
-      flashError('冷却策略保存失败');
+    setError(null);
+    try {
+      const res = await apiFetch(
+        `/api/admin/providers/${providerId}/cooldown-policy`,
+        { method: 'PUT', body: JSON.stringify(policy) },
+      );
+      if (res.ok) {
+        setPolicySaved(true);
+        window.setTimeout(() => setPolicySaved(false), 2500);
+      } else {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        flashError(data.error?.message ?? `冷却策略保存失败（HTTP ${res.status}）`);
+      }
+    } catch {
+      flashError('网络异常：冷却策略未保存。');
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -206,6 +245,14 @@ export default function KeyPool({
       {open && (
         <div className="panel" style={{ marginTop: 8 }}>
           {error && <div className="error" role="alert">{error}</div>}
+          {loadError && (
+            <div className="error" role="alert">
+              密钥池加载失败：{loadError}（下方列表可能为空或过期）
+              <button className="btn btn--ghost" onClick={() => void load()}>
+                重试
+              </button>
+            </div>
+          )}
 
           <table>
             <thead>

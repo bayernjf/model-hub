@@ -34,6 +34,7 @@ export default function Projects() {
   const [showForm, setShowForm] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [plainToken, setPlainToken] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -80,14 +81,33 @@ export default function Projects() {
   const rotateToken = useCallback(
     async (projectId: string) => {
       setBusy(projectId);
-      const res = await apiFetch(
-        `/api/admin/projects/${projectId}/rotate-token`,
-        { method: 'POST' },
-      );
-      const data = (await res.json()) as { token: string };
-      setPlainToken(data.token);
-      setBusy(null);
-      void load();
+      setActionError(null);
+      try {
+        const res = await apiFetch(
+          `/api/admin/projects/${projectId}/rotate-token`,
+          { method: 'POST' },
+        );
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as {
+            error?: { message?: string };
+          };
+          setActionError(data.error?.message ?? `签发失败（HTTP ${res.status}）`);
+          return;
+        }
+        const data = (await res.json().catch(() => null)) as { token?: string } | null;
+        if (!data?.token) {
+          setActionError('签发响应缺少 token');
+          return;
+        }
+        setPlainToken(data.token);
+        await load();
+      } catch {
+        // Previously a thrown fetch skipped both the error message and the
+        // busy reset, so the row button stayed disabled with no feedback.
+        setActionError('网络异常：Token 未签发，请重试。');
+      } finally {
+        setBusy(null);
+      }
     },
     [load],
   );
@@ -95,12 +115,26 @@ export default function Projects() {
   const setTokenEnabled = useCallback(
     async (tokenId: string, enabled: boolean) => {
       setBusy(tokenId);
-      await apiFetch(`/api/admin/projects/tokens/${tokenId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ enabled }),
-      });
-      setBusy(null);
-      void load();
+      setActionError(null);
+      try {
+        const res = await apiFetch(`/api/admin/projects/tokens/${tokenId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ enabled }),
+        });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as {
+            error?: { message?: string };
+          };
+          setActionError(
+            data.error?.message ?? `Token ${enabled ? '启用' : '停用'}失败（HTTP ${res.status}）`,
+          );
+        }
+        await load();
+      } catch {
+        setActionError('网络异常：Token 状态未保存。');
+      } finally {
+        setBusy(null);
+      }
     },
     [load],
   );
@@ -124,6 +158,8 @@ export default function Projects() {
           <Plus size={14} /> 新建项目
         </button>
       </div>
+
+      {actionError && <div className="error" role="alert">{actionError}</div>}
 
       {showForm && (
         <NewProjectForm

@@ -59,27 +59,35 @@ function NewProviderForm({
   const submit = async () => {
     setSaving(true);
     setError(null);
-    const res = await apiFetch('/api/admin/providers', {
-      method: 'POST',
-      body: JSON.stringify({
-        name,
-        preset_id: presetId || null,
-        protocol: selected?.protocol ?? 'openai-compatible',
-        base_url: baseUrl,
-        billing_type: selected?.billing_type ?? 'payg',
-        ...(apiKey ? { api_key: apiKey } : {}),
-      }),
-    });
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: { message?: string };
-      };
-      setError(data.error?.message ?? '保存失败');
+    try {
+      const res = await apiFetch('/api/admin/providers', {
+        method: 'POST',
+        body: JSON.stringify({
+          name,
+          preset_id: presetId || null,
+          protocol: selected?.protocol ?? 'openai-compatible',
+          base_url: baseUrl,
+          billing_type: selected?.billing_type ?? 'payg',
+          ...(apiKey ? { api_key: apiKey } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setError(data.error?.message ?? `保存失败（HTTP ${res.status}）`);
+        return;
+      }
+      const data = (await res.json().catch(() => null)) as { provider?: Provider } | null;
+      if (!data?.provider) throw new Error('保存响应缺少 provider');
+      onCreated(data.provider);
+    } catch (err) {
+      // Covers transport failure and a non-JSON success body; without this the
+      // save button stays disabled with no explanation.
+      setError(errorText(err));
+    } finally {
       setSaving(false);
-      return;
     }
-    const data = (await res.json()) as { provider: Provider };
-    onCreated(data.provider);
   };
 
   return (
@@ -154,12 +162,56 @@ export default function Providers() {
 
   const runTest = useCallback(async (id: string) => {
     setTesting(id);
-    const res = await apiFetch(`/api/admin/providers/${id}/test`, {
-      method: 'POST',
-    });
-    const result = (await res.json()) as TestResult;
-    setResults((prev) => ({ ...prev, [id]: result }));
-    setTesting(null);
+    try {
+      const res = await apiFetch(`/api/admin/providers/${id}/test`, {
+        method: 'POST',
+      });
+      const body = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            latency_ms?: number;
+            error?: { code?: string; hint?: string; detail?: string; message?: string };
+          }
+        | null;
+      if (!res.ok || !body) {
+        const hint = body?.error?.message ?? body?.error?.hint;
+        setResults((prev) => ({
+          ...prev,
+          [id]: {
+            ok: false,
+            latency_ms: 0,
+            error: {
+              code: body?.error?.code ?? `HTTP ${res.status}`,
+              ...(hint ? { hint } : {}),
+            },
+          },
+        }));
+      } else {
+        const result: TestResult = {
+          ok: Boolean(body.ok),
+          latency_ms: body.latency_ms ?? 0,
+          ...(body.error
+            ? {
+                error: {
+                  code: body.error.code ?? 'error',
+                  ...(body.error.hint ? { hint: body.error.hint } : {}),
+                  ...(body.error.detail ? { detail: body.error.detail } : {}),
+                },
+              }
+            : {}),
+        };
+        setResults((prev) => ({ ...prev, [id]: result }));
+      }
+    } catch (err) {
+      // A thrown fetch (offline / non-JSON body) must still clear `testing`,
+      // otherwise the row spinner and disabled button never recover.
+      setResults((prev) => ({
+        ...prev,
+        [id]: { ok: false, latency_ms: 0, error: { code: 'network', hint: errorText(err) } },
+      }));
+    } finally {
+      setTesting(null);
+    }
   }, []);
 
   const handleCreated = useCallback(
