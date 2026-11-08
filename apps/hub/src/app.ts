@@ -27,6 +27,7 @@ import { modelRoutes } from './routes/admin/models.js';
 import { assignmentRoutes } from './routes/admin/assignments.js';
 import { adminHealthRoutes } from './routes/admin/health.js';
 import { adminCostRoutes } from './routes/admin/costs.js';
+import { adminBillingRoutes } from './routes/admin/billing.js';
 import { adminKnowledgeRoutes } from './routes/admin/knowledge.js';
 import { sessionRoutes } from './routes/admin/session.js';
 import { pubRoutes } from './routes/pub.js';
@@ -112,6 +113,7 @@ export function createApp(
     modelRepo,
     projectRepo,
   }));
+  app.route('/api/admin', adminBillingRoutes(config, usageRepo));
   app.route(
     '/api/admin',
     adminKnowledgeRoutes(config, projectRepo, knowledge),

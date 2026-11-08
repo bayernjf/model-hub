@@ -6,7 +6,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: model-hub:latest
+    # Tag hook for rolling back code. Releasing means tagging the built image
+    # with a stamp (`docker tag model-hub:latest model-hub:<stamp>`) before the
+    # next build overwrites `latest`; a rollback sets HUB_IMAGE_TAG to that
+    # stamp and reruns `docker compose up -d`.
+    image: model-hub:${HUB_IMAGE_TAG:-latest}
     container_name: model-hub
     environment:
       HUB_MASTER_KEY: ${HUB_MASTER_KEY:?set HUB_MASTER_KEY in the repo-root .env}

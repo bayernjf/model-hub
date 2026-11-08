@@ -12,4 +12,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/assignments', label: '分配' },
   { href: '/knowledge', label: '知识库' },
   { href: '/costs', label: '成本' },
+  { href: '/billing', label: '账单' },
 ];
