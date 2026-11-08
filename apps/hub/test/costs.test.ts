@@ -388,6 +388,7 @@ describe('budget watermark column (W5-3)', () => {
         spent_micros: number;
         daily_budget_micros: number;
         percent: number | null;
+        day: string;
       }>;
     };
   }
@@ -414,6 +415,7 @@ describe('budget watermark column (W5-3)', () => {
     expect(row.spent_micros).toBe(420_000);
     expect(row.daily_budget_micros).toBe(1_000_000);
     expect(row.percent).toBe(42);
+    expect(row.day).toBe(new Date().toISOString().slice(0, 10));
   });
 
   it('is unaffected by the requested aggregation window', async () => {
