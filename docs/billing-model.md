@@ -45,12 +45,19 @@ GET /api/admin/billing?period=2026-11     # 缺省 = 当前 UTC 月
 | `billable` | `builtin` 用量与金额（**唯一带价格的桶**） |
 | `metered_only` | `byok` 用量；`amount_micros` 恒 0 |
 | `by_project[]` | 每项目：`billable_micros`、`metered_tokens`、`calls` |
-| `by_model[]` | 每（项目, 模型）：`billable_micros`、`calls` |
+| `by_model[]` | 每（项目, 模型）：`billable_micros`、`calls`、`metered_calls` |
 | `excluded_rows` | 仓库返回但落在其它月份、被排除的行数 |
+| `unattributed_rows` | 窗口内**项目未登记**的用量行数；不进任何合计，单独报出来 |
 | `note` | 用一句话说明 byok 规则，读 JSON 的人不必翻文档 |
 
 `excluded_rows` 是有意暴露的：仓库窗口与本函数若对不齐，钱会在月份之间悄悄移动。
 把它显示出来，对不上时能被看见，而不是被算进某个月。
+
+`unattributed_rows` 是同类问题的另一半：聚合 SQL 是
+`FROM usage_events u JOIN projects p ON p.id = u.project_id`，`usage_events.project_id`
+存的是 **projects 表的 id**（不是 slug）。项目没登记、被删掉、或客户端自己塞了一个标签出来，
+这些用量行在 JOIN 里直接消失 —— 不报错、不进任何桶、`excluded_rows` 也不会计数。
+账单会因此少报真实发生过的用量。所以窗口内的未命中行单独 `COUNT(*)` 一次带出来。
 
 ## 5. 页面（`/billing`）
 
@@ -69,6 +76,9 @@ GET /api/admin/billing?period=2026-11     # 缺省 = 当前 UTC 月
    byok 模型在「按模型」表里只剩一行 `$0.0000`，读起来就是免费。金额为 0 且有过 byok 调用时
    改显示「仅计量（N 次）」；为此 `by_model` 增加了 `metered_calls` 字段——页面之所以能区分，
    是因为响应里先有了这个区分。
+5. **未归属用量绝不能被显示成「这个月没有用量」**：只要 `unattributed_rows > 0`，空月文案就
+   不成立，页面出警示条；若本月除它之外没有任何可归属用量，正文改说「有 N 行用量，但没有一行
+   能归属到已登记的项目」，并把人指去登记项目，而不是让人以为账已经结清。
 
 ## 6. 为什么先做查询不做落库
 
