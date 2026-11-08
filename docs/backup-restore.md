@@ -43,9 +43,52 @@ docker compose start model-hub
 
 1. **密钥与快照必须分开保管。** `HUB_MASTER_KEY` 不得写进 `./backups`、也不得与快照同处
    一个卷或同一个 git 仓库；否则拿到快照的人同时拿到钥匙，备份等于没加密。
-2. **回滚代码靠镜像 tag。** 发布前先 `docker tag model-hub:latest model-hub:<stamp>` 保存当版；
-   回滚时 `HUB_IMAGE_TAG=<stamp> docker compose up -d`。只改 `latest` 而不留 tag，
-   数据能回、代码回不去。
+2. **回滚代码靠镜像 tag，不靠重建。** 具体流程与失效条件见 §4.1。
+
+### 4.1 镜像回滚锚点（2026-11-08）
+
+`docker-compose.yml` 的 `image: model-hub:${HUB_IMAGE_TAG:-latest}` 只是一个钩子，
+默认行为不是锚点。
+
+**默认值为什么是问题**：不设 `HUB_IMAGE_TAG` 时用的是 `latest`，而
+`docker compose up -d --build` 会把 `latest` 直接覆盖成新构建。"上一版"在构建开始的
+那一刻就没了——真出问题时手上只剩坏掉的新镜像，没有可指回的版本。
+
+**发布前保留最近 3 个版本**：
+
+```bash
+stamp=$(date +%Y%m%d-%H%M)
+docker tag model-hub:latest model-hub:$stamp
+# 只留最新的 3 个 stamp tag，更早的删掉（latest 不动）
+docker images --format '{{.Repository}}:{{.Tag}}' \
+  | grep '^model-hub:' | grep -v ':latest$' | sort -r \
+  | awk 'NR>3 {print}' | while read -r img; do docker rmi "$img"; done
+```
+
+然后照常 `docker compose up -d --build`。
+
+**回滚命令**（可直接执行）：
+
+```bash
+HUB_IMAGE_TAG=20261108-1400 docker compose up -d model-hub
+```
+
+只重建容器，不加 `--build`；对应的镜像不存在时 compose 会直接报错，不会静默重新构建。
+
+**这条路径在什么情况下失效**：
+
+- tag 只存在于宿主机的本地 Docker daemon。`docker image prune -a`、
+  `docker compose down --rmi all`、换机、重装 Docker 都会让它消失。
+- 本仓没有 registry，tag 不跨机，也没有不可变 digest 可引用；它不等价于 registry 方案。
+- 需要跨机回滚时只能提前 `docker save model-hub:<stamp> | gzip > model-hub-<stamp>.tgz`，
+  在目标机 `docker load`；这份 tar 同样会过期，也可能没同步到别的机器。
+- 镜像回滚只回代码。数据回滚走 §3 的快照恢复，两者互相独立，不能拿镜像 tag 当数据回滚。
+
+**为什么不改成 `${HUB_IMAGE_TAG:?}` 强制显式版本**：会改变现有部署方式——
+`docker compose up -d --build` 和不带该变量的 `scripts/migrate-to-cloud.sh` 调用会
+直接报错退出。要收紧就得同步改 `DEPLOYMENT.md`、迁移脚本，并让每次发布先定 tag。
+本次保持默认 `latest`，用上面的"发布前留 tag"补上锚点；等到有 registry 或发布流水线
+再考虑强制显式版本。
 
 ## 5. 演练记录（2026-11-08）
 
