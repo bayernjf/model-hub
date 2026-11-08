@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import AsyncState from './AsyncState';
 import { apiJson } from './api';
+import { usd } from '../lib/money';
 
 interface CostCell {
   calls: number;
@@ -61,10 +62,6 @@ function windowQuery(range: RangeKey): string {
     to: new Date().toISOString(),
   });
   return `?${params.toString()}`;
-}
-
-function usd(micros: number): string {
-  return `$${(micros / 1_000_000).toFixed(4)}`;
 }
 
 function watermarkColor(percent: number | null): string {
