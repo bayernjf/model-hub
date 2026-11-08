@@ -4,10 +4,9 @@ import type { CostAggregateRow } from '../src/repositories/reporting.js';
 import { ValidationError } from '../src/validation.js';
 import { login, makeTestApp } from './helpers.js';
 
-function row(
-  overrides: Partial<CostAggregateRow> & Pick<CostAggregateRow, 'project'>
-): CostAggregateRow {
+function row(overrides: Partial<CostAggregateRow> = {}): CostAggregateRow {
   return {
+    project: 'zeus',
     day: '2026-11-15',
     billing_source: 'builtin',
     model: 'doubao-seed-1-6',
