@@ -25,6 +25,7 @@ interface ModelLine {
   model: string;
   billable_micros: number;
   calls: number;
+  metered_calls: number;
 }
 
 interface Statement {
@@ -183,7 +184,11 @@ export default function Billing() {
                   <tr key={line.project}>
                     <td>{line.project}</td>
                     <td>{tokens(line.calls)}</td>
-                    <td>{usd(line.billable_micros)}</td>
+                    <td>
+                      {line.billable_micros === 0 && line.metered_tokens > 0
+                        ? '仅计量'
+                        : usd(line.billable_micros)}
+                    </td>
                     <td>{line.metered_tokens > 0 ? tokens(line.metered_tokens) : '—'}</td>
                   </tr>
                 ))}
@@ -208,7 +213,11 @@ export default function Billing() {
                     <td>{line.project}</td>
                     <td>{line.model}</td>
                     <td>{tokens(line.calls)}</td>
-                    <td>{usd(line.billable_micros)}</td>
+                    <td>
+                      {line.billable_micros === 0 && line.metered_calls > 0
+                        ? `仅计量（${tokens(line.metered_calls)} 次）`
+                        : usd(line.billable_micros)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
