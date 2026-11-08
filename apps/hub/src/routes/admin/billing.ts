@@ -36,7 +36,9 @@ export function adminBillingRoutes(config: HubConfig, usageRepo: UsageRepository
     }
 
     const rows = usageRepo.aggregate(window);
-    return c.json(buildStatement(rows, period));
+    // Counted separately: the aggregate joins on projects, so these rows are
+    // absent from it. Without this the statement silently under-reports.
+    return c.json(buildStatement(rows, period, usageRepo.unattributedRows(window)));
   });
 
   return routes;

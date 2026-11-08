@@ -119,6 +119,15 @@ describe('buildStatement', () => {
     expect(statement.note).toContain('byok');
     expect(statement.metered_only.amount_micros).toBe(0);
     expect(statement.currency).toBe('USD');
+    expect(statement.unattributed_rows).toBe(0);
+  });
+
+  it('carries the unattributed row count so a short total can be explained', () => {
+    expect(buildStatement([], '2026-11', 3).unattributed_rows).toBe(3);
+    // A negative or fractional count is a caller bug, not a reason to render
+    // "-1 rows are unowned".
+    expect(buildStatement([], '2026-11', -2).unattributed_rows).toBe(0);
+    expect(buildStatement([], '2026-11', 2.7).unattributed_rows).toBe(2);
   });
 
   it('keeps a byok model line distinguishable from a free one', () => {

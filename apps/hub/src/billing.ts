@@ -82,6 +82,9 @@ export interface BillingStatement {
   by_model: BillingModelLine[];
   /** Rows the repository returned that belong to another month. */
   excluded_rows: number;
+  /** Window rows whose project is not registered, so no project line can own
+   * them. They never enter billable or metered_only, hence never the total. */
+  unattributed_rows: number;
   note: string;
 }
 
@@ -117,6 +120,7 @@ function addRow(bucket: BillingBucket, row: CostAggregateRow, withCost: boolean)
 export function buildStatement(
   rows: readonly CostAggregateRow[],
   period: string,
+  unattributedRows = 0,
 ): BillingStatement {
   const bounds = periodBounds(period);
   const month = bounds.period;
@@ -184,6 +188,7 @@ export function buildStatement(
     by_project: [...byProject.values()].sort((a, b) => b.billable_micros - a.billable_micros),
     by_model: [...byModel.values()].sort((a, b) => b.billable_micros - a.billable_micros),
     excluded_rows: excluded,
+    unattributed_rows: Math.max(0, Math.trunc(unattributedRows)),
     note: 'byok usage is metered, not billed: its cost_micros never enters amount_micros',
   };
 }

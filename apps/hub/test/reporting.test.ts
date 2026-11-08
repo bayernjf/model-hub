@@ -256,6 +256,31 @@ describe('usage aggregation', () => {
     ).toHaveLength(2);
     expect(repo.aggregate({ to: '2026-10-26T23:59:59.999Z' })).toHaveLength(1);
   });
+
+  it('counts usage whose project is not registered instead of dropping it', () => {
+    appendEvent({ ts: '2026-10-27T09:00:00.000Z' });
+
+    // Usage written with a project id that has no projects row — a deleted
+    // project, or a client sending its own label. The aggregate joins on
+    // projects, so this row disappears from every total with no trace.
+    s.t.db
+      .prepare(
+        `INSERT INTO usage_events (id, project_id, feature, billing_source, provider,
+           model, input_tokens, output_tokens, cache_read_tokens, http_status, cached,
+           cost_micros, ts, created_at)
+         VALUES ('u-orphan', 'p-vanished', 'chat', 'builtin', 'ark',
+           'doubao-seed-1-6', 10, 20, 0, 200, 0, 5000,
+           '2026-10-27T09:00:00.000Z', '2026-10-27T09:00:00.000Z')`,
+      )
+      .run();
+
+    const repo = new UsageRepository(s.t.db);
+    expect(repo.aggregate()).toHaveLength(1);
+    expect(repo.unattributedRows()).toBe(1);
+    expect(
+      repo.unattributedRows({ from: '2026-10-28T00:00:00.000Z' }),
+    ).toBe(0);
+  });
 });
 
 describe('health-check reporting', () => {
