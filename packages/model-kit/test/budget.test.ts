@@ -334,9 +334,21 @@ describe('budget enforcement (W5-2)', () => {
     });
     kit.stop();
 
-    await expect(kit.chat('noul', chatMessages)).rejects.toBeInstanceOf(
-      BudgetExceededError,
-    );
+    const err = (await kit
+      .chat('noul', chatMessages)
+      .catch((e: unknown) => e)) as BudgetExceededError;
+    expect(err).toBeInstanceOf(BudgetExceededError);
+    expect(err).toMatchObject({
+      code: 'BUDGET_EXCEEDED',
+      alias: 'noul',
+      assignmentId: 'asn_primary',
+      role: 'primary',
+      modality: 'text',
+    });
+    expect(err.model).toBeTruthy();
+    expect(err.day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(err.message).toContain("assignment 'asn_primary'");
+    expect(err.message).toContain(`UTC day ${err.day}`);
     expect(hub.providerCalls).toHaveLength(0);
     expect(hub.usageReports).toHaveLength(0);
   });
