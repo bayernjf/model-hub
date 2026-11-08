@@ -113,6 +113,7 @@ export default function Models() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
   const [l2, setL2] = useState<Record<string, L2Result>>({});
   const [lastTests, setLastTests] = useState<Record<string, PersistedTest>>({});
@@ -169,13 +170,48 @@ export default function Models() {
   const runL2 = useCallback(
     async (id: string, deep: boolean) => {
       setTesting(id);
-      const query = deep ? '?deep=true' : '';
-      const res = await apiFetch(`/api/admin/models/${id}/test${query}`, {
-        method: 'POST',
-      });
-      const result = (await res.json()) as L2Result;
-      setL2((prev) => ({ ...prev, [id]: result }));
-      setTesting(null);
+      setActionError(null);
+      try {
+        const query = deep ? '?deep=true' : '';
+        const res = await apiFetch(`/api/admin/models/${id}/test${query}`, {
+          method: 'POST',
+        });
+        const body = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          latency_ms?: number;
+          error?: { code?: string; hint?: string; detail?: string; message?: string };
+        } | null;
+        if (!res.ok || !body) {
+          const hint = body?.error?.message ?? body?.error?.hint;
+          setL2((prev) => ({
+            ...prev,
+            [id]: {
+              ok: false,
+              latency_ms: 0,
+              error: {
+                code: body?.error?.code ?? `HTTP ${res.status}`,
+                ...(hint ? { hint } : {}),
+              },
+            },
+          }));
+        } else {
+          const result: L2Result = {
+            ok: Boolean(body.ok),
+            latency_ms: body.latency_ms ?? 0,
+            ...(body.error ? { error: { code: body.error.code ?? 'error', ...(body.error.hint ? { hint: body.error.hint } : {}), ...(body.error.detail ? { detail: body.error.detail } : {}) } } : {}),
+          };
+          setL2((prev) => ({ ...prev, [id]: result }));
+        }
+      } catch (err) {
+        // Release the row spinner on transport failure, otherwise the test
+        // button stays disabled for the rest of the session.
+        setL2((prev) => ({
+          ...prev,
+          [id]: { ok: false, latency_ms: 0, error: { code: 'network', hint: errorText(err) } },
+        }));
+      } finally {
+        setTesting(null);
+      }
     },
     [],
   );
@@ -194,10 +230,22 @@ export default function Models() {
           return;
         }
       }
-      await apiFetch(`/api/admin/models/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ enabled }),
-      });
+      setActionError(null);
+      try {
+        const res = await apiFetch(`/api/admin/models/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ enabled }),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as {
+            error?: { message?: string };
+          };
+          setActionError(body.error?.message ?? `启用状态更新失败（HTTP ${res.status}）`);
+        }
+      } catch {
+        setActionError('网络异常：启用状态未保存。');
+      }
+      // Refresh regardless so the checkbox reflects the server's value.
       void refresh();
     },
     [assignCounts, refresh],
@@ -234,10 +282,7 @@ export default function Models() {
   if (loading) {
     return <AsyncState loading />;
   }
-  if (loadError) {
-    return <AsyncState error={loadError} onRetry={() => void refresh()} />;
-  }
-  if (filtered.length === 0) {
+  if (models.length === 0) {
     return <AsyncState empty emptyText="暂无模型：请先在厂商页接入或导入模型。" />;
   }
 
@@ -267,6 +312,8 @@ export default function Models() {
         </button>
       </div>
 
+      {actionError && <div className="error" role="alert">{actionError}</div>}
+
       {showDrawer && (
         <ImportDrawer
           presets={presets}
@@ -280,6 +327,12 @@ export default function Models() {
       )}
 
       <div className="panel">
+        {filtered.length === 0 ? (
+          <p className="dim" role="status">
+            没有匹配当前搜索/模态的模型（共 {models.length} 个）。清空搜索或切回「全部」后再看；
+            模型并未丢失。
+          </p>
+        ) : (
         <table>
           <thead>
             <tr>
@@ -354,6 +407,7 @@ export default function Models() {
             })}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   );

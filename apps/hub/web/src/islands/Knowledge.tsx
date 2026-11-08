@@ -57,6 +57,8 @@ export default function Knowledge() {
   const [ownerId, setOwnerId] = useState<string>('');
   const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [docsError, setDocsError] = useState<string | null>(null);
 
   // Upload form state.
   const [title, setTitle] = useState('');
@@ -73,34 +75,44 @@ export default function Knowledge() {
 
   const loadDocs = useCallback(async (owner: string) => {
     if (!owner) return;
-    const res = await apiJson<{ documents: KnowledgeDoc[] }>(
-      `/api/admin/knowledge/documents?owner=${encodeURIComponent(owner)}`,
-    );
-    setDocs(res.documents);
+    setDocsLoading(true);
+    try {
+      const res = await apiJson<{ documents: KnowledgeDoc[] }>(
+        `/api/admin/knowledge/documents?owner=${encodeURIComponent(owner)}`,
+      );
+      setDocs(res.documents);
+      setDocsError(null);
+    } catch (err) {
+      // Clear instead of keeping the previous owner's documents, which would
+      // otherwise look like they belong to the newly selected project.
+      setDocs([]);
+      setDocsError(errorMessage(err));
+    } finally {
+      setDocsLoading(false);
+    }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await apiJson<{ projects: Project[] }>(
-          '/api/admin/projects',
-        );
-        if (cancelled) return;
-        setProjects(list.projects);
-        const first = list.projects[0]?.id ?? '';
-        setOwnerId(first);
-        await loadDocs(first);
-      } catch (err) {
-        if (!cancelled) setError(errorMessage(err));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const bootstrap = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const list = await apiJson<{ projects: Project[] }>(
+        '/api/admin/projects',
+      );
+      setProjects(list.projects);
+      const first = list.projects[0]?.id ?? '';
+      setOwnerId(first);
+      await loadDocs(first);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setLoading(false);
+    }
   }, [loadDocs]);
+
+  useEffect(() => {
+    void bootstrap();
+  }, [bootstrap]);
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
@@ -173,6 +185,11 @@ export default function Knowledge() {
 
   if (loading) return <AsyncState loading />;
   if (projects.length === 0) {
+    // A failed project-list request must not be presented as "no projects yet",
+    // which sends the operator off to create a duplicate project.
+    if (error) {
+      return <AsyncState error={error} onRetry={() => void bootstrap()} />;
+    }
     return (
       <AsyncState empty emptyText="尚无项目：请先在「项目」页创建一个项目作为文档 owner。" />
     );
@@ -188,8 +205,11 @@ export default function Knowledge() {
           <select
             value={ownerId}
             onChange={(e) => {
-              setOwnerId(e.target.value);
-              void loadDocs(e.target.value);
+              const next = e.target.value;
+              setOwnerId(next);
+              setDocs([]);
+              setDocsError(null);
+              void loadDocs(next);
             }}
           >
             {projects.map((p) => (
@@ -256,12 +276,25 @@ export default function Knowledge() {
             </tr>
           </thead>
           <tbody>
-            {docs.length === 0 && (
+            {docsLoading ? (
+              <tr>
+                <td colSpan={6} className="dim">正在加载该 owner 的文档…</td>
+              </tr>
+            ) : docsError ? (
+              <tr>
+                <td colSpan={6} className="error" role="alert">
+                  文档加载失败：{docsError}（列表为空不代表没有文档）
+                  <button className="btn btn--ghost" onClick={() => void loadDocs(ownerId)}>
+                    重试
+                  </button>
+                </td>
+              </tr>
+            ) : docs.length === 0 ? (
               <tr>
                 <td colSpan={6}>该 owner 暂无文档</td>
               </tr>
-            )}
-            {docs.map((doc) => (
+            ) : null}
+            {!docsLoading && !docsError && docs.map((doc) => (
               <tr key={doc.id}>
                 <td>{doc.title}</td>
                 <td>{doc.source ?? '—'}</td>
