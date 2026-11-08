@@ -89,6 +89,15 @@ code, .mono { font-family: var(--mono); }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: var(--hair); }
 th { color: var(--ink-faint); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+/* Over-budget locator row: which project/assignment/model/window was hit. */
+.budget-locate td {
+  color: var(--warn);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.7;
+  background: color-mix(in srgb, var(--warn) 7%, transparent);
+}
+.budget-locate code { color: var(--ink); }
 
 input, select, textarea {
   background: var(--steel-900);

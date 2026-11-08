@@ -144,6 +144,8 @@ export function budgetWatermarkRows(
   spent_micros: number;
   daily_budget_micros: number;
   percent: number | null;
+  /** UTC day the spend belongs to (budget window is 00:00–24:00 UTC). */
+  day: string;
 }> {
   const rows: Array<{
     project: string;
@@ -154,7 +156,9 @@ export function budgetWatermarkRows(
     spent_micros: number;
     daily_budget_micros: number;
     percent: number | null;
+    day: string;
   }> = [];
+  const day = new Date().toISOString().slice(0, 10);
   const projectSlugs = new Map<string, string>();
   const projectName = (id: string): string => {
     let slug = projectSlugs.get(id);
@@ -189,6 +193,7 @@ export function budgetWatermarkRows(
       daily_budget_micros: budget,
       percent:
         budget > 0 ? Math.round((spent / budget) * 10000) / 100 : spent > 0 ? null : 0,
+      day,
     });
   }
   return rows;

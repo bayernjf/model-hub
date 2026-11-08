@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import AsyncState from './AsyncState';
 import { apiJson } from './api';
 import { usd } from '../lib/money';
@@ -38,6 +38,8 @@ interface BudgetRow {
   spent_micros: number;
   daily_budget_micros: number;
   percent: number | null;
+  /** UTC day of the budget window (00:00–24:00 UTC). */
+  day: string;
 }
 
 const DAY_MS = 86_400_000;
@@ -297,7 +299,7 @@ export default function Costs() {
       </section>
 
       <section>
-        <h2>预算水位（UTC 当日）</h2>
+        <h2>预算水位（UTC {data.budgets[0]?.day ?? new Date().toISOString().slice(0, 10)}，00:00–24:00）</h2>
         <table>
           <thead>
             <tr>
@@ -316,19 +318,38 @@ export default function Costs() {
                 <td colSpan={7}>暂无配置日预算的分配</td>
               </tr>
             )}
-            {data.budgets.map((row) => (
-              <tr key={row.assignment_id}>
-                <td>{row.project}</td>
-                <td>{row.alias ?? '—'}</td>
-                <td>{row.role}</td>
-                <td>{row.model}</td>
-                <td>{usd(row.spent_micros)}</td>
-                <td>{usd(row.daily_budget_micros)}</td>
-                <td>
-                  <BudgetWatermark row={row} />
-                </td>
-              </tr>
-            ))}
+            {data.budgets.map((row) => {
+              const over = row.percent === null || row.percent >= 100;
+              return (
+                <Fragment key={row.assignment_id}>
+                  <tr>
+                    <td>{row.project}</td>
+                    <td>{row.alias ?? '—'}</td>
+                    <td>{row.role}</td>
+                    <td>{row.model}</td>
+                    <td>{usd(row.spent_micros)}</td>
+                    <td>{usd(row.daily_budget_micros)}</td>
+                    <td>
+                      <BudgetWatermark row={row} />
+                    </td>
+                  </tr>
+                  {over && (
+                    <tr className="budget-locate">
+                      <td colSpan={7}>
+                        超限定位：项目 <code>{row.project}</code> · 分配{' '}
+                        <code>{row.assignment_id}</code> · 别名{' '}
+                        <code>{row.alias ?? '—'}</code> · 角色 <code>{row.role}</code> · 模型{' '}
+                        <code>{row.model}</code> · 窗口 UTC <code>{row.day}</code> 00:00–24:00
+                        {row.percent === null
+                          ? '（零预算分配，任何 builtin 花费都会超限）'
+                          : `（已用 ${usd(row.spent_micros)}，预算 ${usd(row.daily_budget_micros)}）`}
+                        {' '}· 预算只覆盖 hub builtin 调用，不含 BYOK key
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </section>
