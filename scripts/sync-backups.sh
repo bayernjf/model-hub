@@ -11,7 +11,9 @@
 set -u
 
 SRC=${BACKUP_SRC:-$HOME/000mycodes/model-hub/backups}
-DST=${BACKUP_DST:-$HOME/Downloads/model-hub-backups}
+# NOT ~/Downloads: TCC protects that folder, so a launchd-started process cannot
+# even open it. ~/000mycodes-backups sits outside the protected set and works.
+DST=${BACKUP_DST:-$HOME/000mycodes-backups/model-hub}
 
 [ -d "$SRC" ] || exit 0
 mkdir -p "$DST" || exit 0
