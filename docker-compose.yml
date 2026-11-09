@@ -44,7 +44,7 @@ services:
         max-file: "3"
 
   # SQLite snapshot loop (scripts/backup-hub.sh): consistent .backup copies to
-  # a host-mounted ./backups dir, pruned after RETENTION_DAYS.
+  # a host-mounted dir, pruned after RETENTION_DAYS.
   backup:
     # Same pinned image as the app stages (Node 22.23.4); digest rationale in
     # the Dockerfile header.
@@ -53,7 +53,10 @@ services:
       - model-hub
     volumes:
       - model-hub-data:/data:ro
-      - ./backups:/backups
+      # Snapshot destination on the host. Defaults to ./backups so a plain
+      # checkout keeps working; set HUB_BACKUP_DIR in .env to point at a place
+      # that survives the repo directory being wiped or moved.
+      - ${HUB_BACKUP_DIR:-./backups}:/backups
       - ./scripts/backup-hub.sh:/scripts/backup-hub.sh:ro
     environment:
       BACKUP_INTERVAL_SECONDS: ${HUB_BACKUP_INTERVAL_SECONDS:-86400}
