@@ -8,6 +8,7 @@ import { loadConfig } from './config.js';
 import { openDatabase } from './db/open.js';
 import { migrateUp } from './db/migrate.js';
 import { ensureDataDir } from './storage/ensure-data-dir.js';
+import { hasAdminSession, isPublicPagePath } from './web-guard.js';
 
 type NodeListener = (req: IncomingMessage, res: ServerResponse) => void;
 
@@ -51,9 +52,23 @@ const astroHandler = astroEntry.handler;
 const server = createServer((req, res) => {
   if (req.url && isBackendPath(req.url)) {
     void honoListener(req, res);
-  } else {
-    astroHandler(req, res);
+    return;
   }
+
+  // Page requests skip Hono entirely, so this is the only place that can hold
+  // the console behind a session. Without it every page answers 200 to anyone
+  // who can reach the port, exposing the whole admin shell.
+  const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+  if (
+    !isPublicPagePath(pathname) &&
+    !hasAdminSession(req.headers.cookie ?? null, config)
+  ) {
+    res.writeHead(302, { Location: '/login', 'Cache-Control': 'no-store' });
+    res.end();
+    return;
+  }
+
+  astroHandler(req, res);
 });
 
 server.listen(config.port, config.host, () => {
