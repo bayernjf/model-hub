@@ -1,0 +1,13 @@
+# Local-only override. Joins the shared Tier 0 network so the other products
+# can reach the hub by service name instead of through a host port.
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+networks:
+  tier0-net:
+    external: true
+
+services:
+  model-hub:
+    networks:
+      - default
+      - tier0-net
