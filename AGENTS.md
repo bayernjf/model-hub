@@ -3,6 +3,14 @@
 本文件供在本仓工作的 AI 协作 agent 使用。设计/需求/任务拆解的单一事实源
 在 `bayjf/docs/tier0/`（三份 model-hub 文档，见下），本文只规定本仓工程纪律。
 
+## 本地容器运行时（macOS）
+
+本机 macOS 开发只用 OrbStack，不再使用 Docker Desktop。`docker` / `docker compose`
+命令不变（`docker context` 为 `orbstack`）。拉公共镜像直连失败时，用
+`docker.m.daocloud.io` 等镜像站前缀兜底。完整约定与恢复步骤见
+`../bayjf/AGENTS.md` 的「本地容器运行时约定（macOS）」和
+`~/000mycodes-backups/README.md`。
+
 ## 项目定位
 
 model-hub 是 owner 单用户的**模型控制面（control plane）**：管理厂商凭证、
