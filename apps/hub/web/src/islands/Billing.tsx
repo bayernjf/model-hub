@@ -25,6 +25,7 @@ interface ModelLine {
   model: string;
   billable_micros: number;
   calls: number;
+  metered_calls: number;
 }
 
 interface Statement {
@@ -37,6 +38,7 @@ interface Statement {
   by_project: ProjectLine[];
   by_model: ModelLine[];
   excluded_rows: number;
+  unattributed_rows: number;
   note: string;
 }
 
@@ -116,8 +118,12 @@ export default function Billing() {
   if (!statement) return <AsyncState empty emptyText="暂无账单数据。" />;
 
   // A month with nothing recorded is NOT a bill of zero: the two statements
-  // mean different things to whoever reads them.
-  const empty = statement.billable.calls === 0 && statement.metered_only.calls === 0;
+  // mean different things to whoever reads them. Usage that belongs to an
+  // unregistered project is still usage, so it also disqualifies "empty" — the
+  // month would otherwise claim there was nothing while rows sit unowned.
+  const noBillableCalls =
+    statement.billable.calls === 0 && statement.metered_only.calls === 0;
+  const empty = noBillableCalls && statement.unattributed_rows === 0;
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
@@ -143,12 +149,24 @@ export default function Billing() {
         </p>
         {empty ? (
           <AsyncState empty emptyText="这个月没有用量记录 —— 不是金额为零，是没有账可出。" />
+        ) : noBillableCalls ? (
+          <p style={{ fontSize: 15, margin: '8px 0' }}>
+            本月有 {tokens(statement.unattributed_rows)} 行用量，但没有一行能归属到已登记的项目
+            —— 账单无法为它们出账。先在项目页登记这些项目，再回来核对。
+          </p>
         ) : (
           <p style={{ fontSize: 22, fontFamily: 'var(--mono)', margin: '8px 0' }}>
             {usd(statement.billable.amount_micros)}
             <span className="dim" style={{ fontSize: 13, marginLeft: 8 }}>
               （{tokens(statement.billable.calls)} 次调用，byok {tokens(statement.metered_only.calls)} 次仅计量）
             </span>
+          </p>
+        )}
+        {statement.unattributed_rows > 0 && (
+          <p className="dim" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <AlertTriangle size={14} />
+            {tokens(statement.unattributed_rows)} 行用量的项目未在 model-hub 登记，无法归属，
+            未计入本账单的任何合计
           </p>
         )}
         {statement.excluded_rows > 0 && (
@@ -159,7 +177,7 @@ export default function Billing() {
         )}
       </section>
 
-      {!empty && (
+      {!empty && !noBillableCalls && (
         <>
           <section>
             <h2>用量与金额</h2>
@@ -183,7 +201,11 @@ export default function Billing() {
                   <tr key={line.project}>
                     <td>{line.project}</td>
                     <td>{tokens(line.calls)}</td>
-                    <td>{usd(line.billable_micros)}</td>
+                    <td>
+                      {line.billable_micros === 0 && line.metered_tokens > 0
+                        ? '仅计量'
+                        : usd(line.billable_micros)}
+                    </td>
                     <td>{line.metered_tokens > 0 ? tokens(line.metered_tokens) : '—'}</td>
                   </tr>
                 ))}
@@ -208,7 +230,11 @@ export default function Billing() {
                     <td>{line.project}</td>
                     <td>{line.model}</td>
                     <td>{tokens(line.calls)}</td>
-                    <td>{usd(line.billable_micros)}</td>
+                    <td>
+                      {line.billable_micros === 0 && line.metered_calls > 0
+                        ? `仅计量（${tokens(line.metered_calls)} 次）`
+                        : usd(line.billable_micros)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

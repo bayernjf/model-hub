@@ -119,6 +119,31 @@ describe('buildStatement', () => {
     expect(statement.note).toContain('byok');
     expect(statement.metered_only.amount_micros).toBe(0);
     expect(statement.currency).toBe('USD');
+    expect(statement.unattributed_rows).toBe(0);
+  });
+
+  it('carries the unattributed row count so a short total can be explained', () => {
+    expect(buildStatement([], '2026-11', 3).unattributed_rows).toBe(3);
+    // A negative or fractional count is a caller bug, not a reason to render
+    // "-1 rows are unowned".
+    expect(buildStatement([], '2026-11', -2).unattributed_rows).toBe(0);
+    expect(buildStatement([], '2026-11', 2.7).unattributed_rows).toBe(2);
+  });
+
+  it('keeps a byok model line distinguishable from a free one', () => {
+    const rows = [
+      row({ project: 'zeus', model: 'byok-model', billing_source: 'byok', cost_micros: 4000 }),
+      row({ project: 'zeus', model: 'paid-model', cost_micros: 300 }),
+    ];
+    const statement = buildStatement(rows, '2026-11');
+    const byokLine = statement.by_model.find((line) => line.model === 'byok-model');
+
+    // The page can only print "仅计量" if the payload carries the distinction;
+    // otherwise a byok model renders as a zero amount and reads as free.
+    expect(byokLine).toMatchObject({ billable_micros: 0, metered_calls: 1 });
+    expect(
+      statement.by_model.find((line) => line.model === 'paid-model'),
+    ).toMatchObject({ billable_micros: 300, metered_calls: 0 });
   });
 });
 

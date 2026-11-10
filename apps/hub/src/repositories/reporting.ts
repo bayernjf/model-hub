@@ -240,6 +240,33 @@ export class UsageRepository {
       .all(...params) as unknown as CostAggregateRow[];
 
   }
+
+  // Rows in the window whose project_id matches no projects row. The aggregate
+  // joins on projects, so those rows fall out of every bucket with no trace: a
+  // statement that cannot count them reports less usage than actually happened.
+  unattributedRows(window?: CostAggregateWindow): number {
+    const conditions: string[] = [];
+    const params: string[] = [];
+    if (window?.from) {
+      conditions.push('u.ts >= ?');
+      params.push(window.from);
+    }
+    if (window?.to) {
+      conditions.push('u.ts <= ?');
+      params.push(window.to);
+    }
+    const where =
+      conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : '';
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS n
+         FROM usage_events u
+         LEFT JOIN projects p ON p.id = u.project_id
+         WHERE p.id IS NULL${where}`,
+      )
+      .get(...params) as unknown as { n: number };
+    return Number(row?.n) || 0;
+  }
 }
 
 export class HealthCheckRepository {
