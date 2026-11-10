@@ -6,6 +6,9 @@
 # folder), which wedged the daemon and took every container on the machine down
 # with it. A host-side copy cannot do that.
 #
+# The local runtime is OrbStack since 2026-11-10 (Docker Desktop retired on
+# macOS); the TCC constraint below holds regardless of which runtime is used.
+#
 # Incremental by design: files are only added or updated, never deleted, so a
 # snapshot that aged out of the container's retention window survives here.
 set -u
