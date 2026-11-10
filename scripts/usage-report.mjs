@@ -140,6 +140,13 @@ function section(title, rows, columns, pick) {
       '\nnote: tokens were recorded but cost is 0 — this model has no per-token pricing\n' +
         '      entry (subscription plans carry none), so cost is not derivable here.',
     );
+  } else if ((t.cost_micros ?? 0) > 0) {
+    console.log(
+      '\nnote: cost = tokens × the pricing row stored on each model. That row may be a\n' +
+        '      placeholder standing in for a subscription plan (currently modelled on\n' +
+        '      OpenAI GPT-5.4 list rates), in which case this is an estimate, not an\n' +
+        '      invoice. Replace it via PATCH /api/admin/models/:id before billing.',
+    );
   }
 })().catch((err) => {
   console.error(err.message);
