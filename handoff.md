@@ -4,6 +4,62 @@
 
 本文件记录 M7 收尾的工程进展；设计事实仍以 bayjf `docs/tier0/` 文档为准。
 
+## 2026-11-11 全端点只读实测（45 探针 / 0 个 5xx）
+
+本地实例 `127.0.0.1:8791`（uptime 9h+，revision **38**）。此前只验过用量计量，
+本轮把读侧面全部跑了一遍。**未做任何写操作**，两处不可避免的副作用如实登记：
+admin 登录 3 次 → `audit_log` 3 行 `admin.login success`；pub GET 会
+`UPDATE tokens SET last_used_at`（`repositories/projects.ts:254`，产品固有行为）。
+
+**鉴权 fail-closed 已验**：无凭证时 13 个 `/api/admin/*` 与 2 个 `/pub/v1/*` 全 401；
+伪造 token 401；**拿项目 token 打 admin 路由仍 401**（两套鉴权不互通）。
+免鉴权面只有 `/healthz`（200，带 version/uptime）与 `/readyz`（200 `{ready:true}`）。
+
+**两个"看着像 bug 其实是契约"的点，别再当缺陷报**：
+
+- `/pub/v1/usage/summary` **按设计只算当天**（`spendTodayByAssignment`），
+  `?days=7` 是未定义参数被忽略，响应与不带参数逐字节相同。要区间数据走
+  `/api/admin/costs` 的 `by_day`。
+- `/api/admin/knowledge/documents` **必须带 `?owner=<projectId>`**，缺参数返回
+  404 `unknown owner project`（`routes/admin/knowledge.ts:43` 显式注释：让控制台
+  能区分"下拉框过期"和真错误）。补齐 owner 后 4 个项目全 200，documents 均为 0。
+- 探针写法坑：`fetch` 默认跟随重定向，HTML 兜底路由的 302→`/login` 会被读成
+  "200 + 2544B 非 JSON"，看着像未鉴权泄露。必须 `redirect:'manual'` 才看到真实 302。
+
+**目录实测：五种模态齐全，embedding 模型是启用状态。** 5 个模型 / 3 个 provider：
+`ark-code-latest`(text)、`doubao-embedding-vision`(**embedding**)、
+`doubao-seedream-5.0-flash`(image)、`seed-tts-2.0`(audio)、`agnes-video-2.5-flash`(video)，
+全部 enabled=true，三个 provider key 均 `state=ok`。
+**⇒ zeus W1-4「记忆试点受阻」的原因不是"hub 只有 text 模型"**：投影按项目
+assignments 过滤（`projection.ts:76`），zeus 项目下只有 `noul`/`choice`/`score`
+三个别名、全指向 ark-code-latest；`embed` 别名存在但只分配给了 `smoke-proj`。
+解阻只需一次 owner 权限的 assignment 写入（`PUT /api/admin/assignments`），
+**不需要新增 provider / 模型 / 密钥**。
+
+**成本口径更正**：全量 **19 calls / 157310 micros = $0.15731**
+（tier0-local 5/$0.12535、zeus 8/$0.03196、smoke-proj 6/$0；byok 全 0）。
+之前记的「8 calls / $0.032」是 **zeus 单项目**的数，不是 hub 全量。
+`by_model` 有 8 行而目录只有 5 个模型，是因为用量行保留上报当时的模型名
+（`doubao-seed-tts-2.0` → `seed-tts-2.0` 改过名），append-only 的预期形态。
+
+**三个真实缺口（本轮只登记，未改）**：
+
+1. **`reasoning_tokens` 恒为 0**，而 ark-code-latest 是推理模型。hub 侧没问题
+   （schema 收、SQL `COALESCE(SUM(...))` 算）；是**客户端不上报**——job-agent
+   `apps/api/src` 与 `packages/llm/src` 全仓 grep `reasoning_tokens` /
+   `completion_tokens_details` **0 命中**，推理 token 被折进 output_tokens。
+2. **健康巡检与预算告警从未被驱动过**：`/api/admin/health-checks` → `[]`、
+   `/api/admin/models` 的 `last_tests` → `{}`、`costs.budgets` → `[]`。
+   代码在、这台上一次没跑过，不能按"已验证"记。
+3. **job-agent 本地 `.env` 的 `MODEL_HUB_TOKEN` 属于 `tier0-local` 项目**，
+   不是 `job-agent` 项目（两个项目都存在）。所以 job-agent 本地跑真实 LLM 的钱
+   记在 tier0-local 名下。是否要换回 job-agent token 待 owner 定。
+
+**安全面**：admin API 从不回明文 provider key（只给 `****10d1` / `****SxLd` 尾四位
++ `state`）；但 **pub 投影按设计返回明文 `api_key` / `api_keys`**（实测 18 个字段里
+两者都在，key 长 46）——这正是项目 token 必须当密钥保管的原因。
+另：本文件下文 zeus 段那串 `tok_…` 已核实是**行 ID 不是凭证**，措辞已就地更正。
+
 ## 2026-11-05 复核（权限与过时表述）
 
 - **备份权限已全部收紧**：`backups/hub-*.db` 共 9 个，现均为 `600`
@@ -285,8 +341,11 @@ zeus 决策后端；走 hub 主路径（非 env 直连）。以下条目本轮�
   127.0.0.1:8791，含 backup sidecar），named volume `model-hub_model-hub-data`
   数据完好。
 - ~~注册 zeus 项目 + token~~：`prj_8e9bf3701a8af05562d4fcdec29e3e2b`，
-  slug=`zeus`，enabled；token `tok_dbae45acbf22c0b59867cac0f7c81557`
-  （hint `****2329`，enabled）。
+  slug=`zeus`，enabled；token **ID** `tok_dbae45acbf22c0b59867cac0f7c81557`
+  （hint `****2329`，enabled）。**这串是 tokens 表的行 ID，不是凭证**：真实 token
+  形如 `mh_` + 64 hex（67 字符），只在签发时返回一次、库里只存 SHA-256。
+  2026-11-11 实测拿本行字面量当 Bearer 打 `/pub/v1/models` 返回 **401**，
+  故本文件不构成凭证泄露，无需因此轮换。
 - ~~启用 overlay~~：`ark-code-latest`（`mdl_6008b68bfbe5719f61d401af9262be45`）
   enabled=1，modalities=text。
 - ~~建别名 assignments~~：zeus 项目下三个别名 `noul` / `choice` / `score`
