@@ -42,6 +42,14 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # tier0-net is the shared product network. Zeus addresses the hub as
+    # http://model-hub:8791 and its outbound guard requires a resolvable DNS
+    # name, so the hub must be a first-class member rather than attached
+    # out-of-band with `docker network connect` (that attachment is runtime
+    # state and disappears whenever this service is recreated).
+    networks:
+      - default
+      - tier0-net
 
   # SQLite snapshot loop (scripts/backup-hub.sh): consistent .backup copies to
   # a host-mounted dir, pruned after RETENTION_DAYS.
@@ -71,3 +79,7 @@ services:
 
 volumes:
   model-hub-data:
+
+networks:
+  tier0-net:
+    external: true
