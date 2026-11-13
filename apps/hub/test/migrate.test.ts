@@ -27,6 +27,7 @@ const EXPECTED_TABLES = [
   'budget_alerts',
   'model_test_results',
   'provider_keys',
+  'billing_periods',
 ];
 
 function freshDb(): DatabaseSync {
@@ -51,7 +52,7 @@ describe('SQLite migrations', () => {
     const db = freshDb();
     const applied = migrateUp(db);
 
-    expect(applied).toHaveLength(16);
+    expect(applied).toHaveLength(17);
     expect(userTableNames(db)).toEqual([...EXPECTED_TABLES].sort());
   });
 
@@ -68,14 +69,14 @@ describe('SQLite migrations', () => {
     const status = migrationStatus(db);
 
     expect(status.pending).toEqual([]);
-    expect(status.applied).toHaveLength(16);
+    expect(status.applied).toHaveLength(17);
   });
 
   it('reports all migrations pending on a fresh database', () => {
     const db = freshDb();
     const status = migrationStatus(db);
 
-    expect(status.pending).toHaveLength(16);
+    expect(status.pending).toHaveLength(17);
     expect(status.applied).toEqual([]);
   });
 
@@ -86,7 +87,7 @@ describe('SQLite migrations', () => {
     const rows = db
       .prepare('SELECT checksum FROM schema_migrations')
       .all() as Array<{ checksum: string | null }>;
-    expect(rows).toHaveLength(16);
+    expect(rows).toHaveLength(17);
     for (const row of rows) {
       expect(row.checksum).toMatch(/^[0-9a-f]{64}$/);
     }
@@ -136,7 +137,7 @@ describe('SQLite migrations', () => {
     expect(ledger.map((row) => row.name)).not.toContain(
       '016_allow_same_model_aliases.sql',
     );
-    expect(ledger).toHaveLength(16);
+    expect(ledger).toHaveLength(17);
     const residue = db
       .prepare(
         "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='assignments_new'",
