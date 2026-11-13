@@ -7,6 +7,7 @@ import { ProviderKeyRepository } from './repositories/provider-keys.js';
 import { ProjectRepository } from './repositories/projects.js';
 import { ModelRepository } from './repositories/models.js';
 import { AssignmentRepository } from './repositories/assignments.js';
+import { BillingPeriodRepository } from './repositories/billing-periods.js';
 import { SlidingWindowRateLimiter } from './rate-limit.js';
 import { RevisionService } from './revision.js';
 import { ProjectionService } from './projection.js';
@@ -65,6 +66,7 @@ export function createApp(
     providerKeyRepo,
   );
   const usageRepo = new UsageRepository(db);
+  const billingPeriodRepo = new BillingPeriodRepository(db);
   const healthRepo = new HealthCheckRepository(db);
   const alertRepo = new BudgetAlertRepository(db);
 
@@ -113,7 +115,7 @@ export function createApp(
     modelRepo,
     projectRepo,
   }));
-  app.route('/api/admin', adminBillingRoutes(config, usageRepo));
+  app.route('/api/admin', adminBillingRoutes(config, usageRepo, billingPeriodRepo));
   app.route(
     '/api/admin',
     adminKnowledgeRoutes(config, projectRepo, knowledge),

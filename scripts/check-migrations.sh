@@ -23,6 +23,7 @@ expected_tables=(
   provider_keys
   budget_alerts
   model_test_results
+  billing_periods
 )
 
 fail=0
