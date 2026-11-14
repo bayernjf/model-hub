@@ -147,8 +147,13 @@ export function createApp(
       providerKeyRepo,
     }),
   );
+  // Project-facing knowledge API. Must live under /api so isBackendPath()
+  // routes it into Hono: mounting at '/' produced /v1/knowledge/*, which the
+  // server entry treats as a page and 302-redirects to login, while the
+  // documented/loom-client path /api/v1/knowledge/* 404'd. The internal route
+  // is '/v1/knowledge/*', so the /api prefix yields the documented contract.
   app.route(
-    '/',
+    '/api',
     knowledgeRoutes({
       projectRepo,
       knowledge,
