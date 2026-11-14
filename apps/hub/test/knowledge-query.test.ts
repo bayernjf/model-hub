@@ -58,7 +58,7 @@ async function ingest(
   token: string,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  return app.request('/v1/knowledge/ingest', {
+  return app.request('/api/v1/knowledge/ingest', {
     method: 'POST',
     headers: bearer(token),
     body: JSON.stringify(body),
@@ -72,15 +72,15 @@ describe('knowledge routes auth', () => {
   });
 
   it('rejects missing and unknown tokens with 401', async () => {
-    const noAuth = await s.app.request('/v1/knowledge/documents');
+    const noAuth = await s.app.request('/api/v1/knowledge/documents');
     expect(noAuth.status).toBe(401);
 
-    const badAuth = await s.app.request('/v1/knowledge/documents', {
+    const badAuth = await s.app.request('/api/v1/knowledge/documents', {
       headers: { Authorization: 'Bearer mh_not_a_token' },
     });
     expect(badAuth.status).toBe(401);
 
-    const badIngest = await s.app.request('/v1/knowledge/ingest', {
+    const badIngest = await s.app.request('/api/v1/knowledge/ingest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: 'T', text: 'x' }),
@@ -110,7 +110,7 @@ describe('knowledge ingest route', () => {
     expect(created.chunk_count).toBe(1);
     expect(created.document.source).toBe('console');
 
-    const listA = await s.app.request('/v1/knowledge/documents', {
+    const listA = await s.app.request('/api/v1/knowledge/documents', {
       headers: bearer(s.tokenA),
     });
     const docsA = (await listA.json()) as {
@@ -120,7 +120,7 @@ describe('knowledge ingest route', () => {
     expect(docsA.documents[0]?.title).toBe('Policies');
     expect(docsA.documents[0]?.chunk_count).toBe(1);
 
-    const listB = await s.app.request('/v1/knowledge/documents', {
+    const listB = await s.app.request('/api/v1/knowledge/documents', {
       headers: bearer(s.tokenB),
     });
     const docsB = (await listB.json()) as { documents: unknown[] };
@@ -214,7 +214,7 @@ describe('knowledge query route', () => {
     token: string,
     body: Record<string, unknown>,
   ): Promise<Response> {
-    return s.app.request('/v1/knowledge/query', {
+    return s.app.request('/api/v1/knowledge/query', {
       method: 'POST',
       headers: bearer(token),
       body: JSON.stringify(body),
@@ -236,7 +236,7 @@ describe('knowledge query route', () => {
   it('keeps owners isolated: B never sees A documents', async () => {
     await ingest(s.app, s.tokenB, { title: 'doc-beta-b', text: 'beta' });
 
-    const listB = await s.app.request('/v1/knowledge/documents', {
+    const listB = await s.app.request('/api/v1/knowledge/documents', {
       headers: bearer(s.tokenB),
     });
     const docsB = (await listB.json()) as {
@@ -249,13 +249,13 @@ describe('knowledge query route', () => {
     expect(outcome.citations).toHaveLength(1);
     expect(outcome.citations[0]?.content).toBe('beta');
 
-    const del = await s.app.request(`/v1/knowledge/documents/${docIdA}`, {
+    const del = await s.app.request(`/api/v1/knowledge/documents/${docIdA}`, {
       method: 'DELETE',
       headers: bearer(s.tokenB),
     });
     expect(del.status).toBe(404);
 
-    const delOwn = await s.app.request(`/v1/knowledge/documents/${docIdA}`, {
+    const delOwn = await s.app.request(`/api/v1/knowledge/documents/${docIdA}`, {
       method: 'DELETE',
       headers: bearer(s.tokenA),
     });
@@ -278,7 +278,7 @@ describe('knowledge query route', () => {
       });
       expect(res.status).toBe(201);
     }
-    const res = await reranked.app.request('/v1/knowledge/query', {
+    const res = await reranked.app.request('/api/v1/knowledge/query', {
       method: 'POST',
       headers: bearer(reranked.tokenA),
       body: JSON.stringify({ query: 'alpha', top_k: 2 }),
@@ -299,7 +299,7 @@ describe('knowledge query route', () => {
     for (const text of ['alpha', 'beta', 'gamma']) {
       await ingest(flaky.app, flaky.tokenA, { title: `doc-${text}`, text });
     }
-    const res = await flaky.app.request('/v1/knowledge/query', {
+    const res = await flaky.app.request('/api/v1/knowledge/query', {
       method: 'POST',
       headers: bearer(flaky.tokenA),
       body: JSON.stringify({ query: 'alpha', top_k: 2 }),
@@ -317,7 +317,7 @@ describe('knowledge query route', () => {
     for (const text of ['alpha', 'beta', 'gamma']) {
       await ingest(wrong.app, wrong.tokenA, { title: `doc-${text}`, text });
     }
-    const res = await wrong.app.request('/v1/knowledge/query', {
+    const res = await wrong.app.request('/api/v1/knowledge/query', {
       method: 'POST',
       headers: bearer(wrong.tokenA),
       body: JSON.stringify({ query: 'alpha', top_k: 3 }),
@@ -334,7 +334,7 @@ describe('knowledge query route', () => {
       }),
     );
     await ingest(broken.app, broken.tokenA, { title: 'doc-alpha', text: 'alpha' });
-    const res = await broken.app.request('/v1/knowledge/query', {
+    const res = await broken.app.request('/api/v1/knowledge/query', {
       method: 'POST',
       headers: bearer(broken.tokenA),
       body: JSON.stringify({ query: 'alpha' }),
