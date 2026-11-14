@@ -17,6 +17,12 @@ services:
       HUB_ADMIN_PASSWORD: ${HUB_ADMIN_PASSWORD:?set HUB_ADMIN_PASSWORD in the repo-root .env}
       HUB_PORT: "8791"
       HUB_DATA_DIR: /data
+      # Knowledge base embedding. Optional: when unset the knowledge API
+      # answers 503 knowledge_not_configured instead of failing boot. The
+      # token lives only in the gitignored .env and must resolve an `embed`
+      # alias (see knowledge-seed/ and scripts/knowledge-golden.mjs).
+      KNOWLEDGE_PROJECT_TOKEN: ${KNOWLEDGE_PROJECT_TOKEN:-}
+      KNOWLEDGE_EMBED_ALIAS: ${KNOWLEDGE_EMBED_ALIAS:-embed}
     ports:
       # Bind to loopback only; Caddy/Tailscale handles external exposure.
       - "127.0.0.1:8791:8791"
