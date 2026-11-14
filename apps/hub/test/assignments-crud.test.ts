@@ -268,4 +268,38 @@ describe('assignment management', () => {
     );
     expect(putRes.status).toBe(403);
   });
+
+  it('keeps batch insertion order when created_at ties (rowid tiebreak)', async () => {
+    // A second model under the same project; both rows land in one PUT, so
+    // they share one created_at timestamp. The projection must still return
+    // them in insertion order — consumers take the first text entry as the
+    // default model and must not depend on undefined tie-ordering.
+    const secondPid = await createProvider(t.app, cookie);
+    const secondMid = await importModel(
+      t.app,
+      cookie,
+      secondPid,
+      'seedream-5-0-flash',
+    );
+    const res = await put({
+      project_id: prj,
+      assignments: [
+        { model_id: mid, role: 'primary', alias: 'first' },
+        { model_id: secondMid, role: 'primary', alias: 'second' },
+      ],
+    });
+    expect(res.status).toBe(200);
+
+    const listed = await t.app.request(
+      `/api/admin/assignments?project=${prj}`,
+      { headers: { Cookie: cookie } },
+    );
+    const data = (await listed.json()) as {
+      assignments: Array<{ alias: string }>;
+    };
+    expect(data.assignments.map((a) => a.alias)).toEqual([
+      'first',
+      'second',
+    ]);
+  });
 });
