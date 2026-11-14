@@ -216,6 +216,66 @@ describe('model management', () => {
     expect(listed.models.length).toBe(0);
   });
 
+  it('deletes a model together with its L2/L4 test history', async () => {
+    const pid = await createProvider(t.app, cookie);
+    const mid = await importOne(t.app, cookie, pid, 'seedream-5-0-pro');
+    // Even an unauthorized probe records an L4 result row (ok=false).
+    const probe = await t.app.request(
+      `/api/admin/models/${mid}/test?deep=true`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: '{}' },
+    );
+    expect(probe.status).toBe(200);
+    const before = t.db
+      .prepare('SELECT COUNT(*) AS c FROM model_test_results WHERE model_id = ?')
+      .get(mid) as { c: number };
+    expect(before.c).toBeGreaterThan(0);
+
+    const res = await t.app.request(`/api/admin/models/${mid}`, {
+      method: 'DELETE',
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { removed_test_results: number };
+    expect(body.removed_test_results).toBe(before.c);
+    const after = t.db
+      .prepare('SELECT COUNT(*) AS c FROM model_test_results WHERE model_id = ?')
+      .get(mid) as { c: number };
+    expect(after.c).toBe(0);
+  });
+
+  it('refuses to delete an assigned model with 409', async () => {
+    const pid = await createProvider(t.app, cookie);
+    const mid = await importOne(t.app, cookie, pid, 'seedream-5-0-pro');
+    const projectRes = await t.app.request('/api/admin/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ slug: 'zeus', display_name: 'Zeus' }),
+    });
+    const prj = ((await projectRes.json()) as { project: { id: string } }).project.id;
+    const put = await t.app.request('/api/admin/assignments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        project_id: prj,
+        assignments: [{ model_id: mid, role: 'primary', alias: 'image' }],
+      }),
+    });
+    expect(put.status).toBe(200);
+
+    const res = await t.app.request(`/api/admin/models/${mid}`, {
+      method: 'DELETE',
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('conflict');
+    // The model survives the refused delete.
+    const list = await t.app.request(`/api/admin/providers/${pid}/models`, {
+      headers: { Cookie: cookie },
+    });
+    expect(((await list.json()) as { models: unknown[] }).models).toHaveLength(1);
+  });
+
   it('forbids operator from writing models', async () => {
     const pid = await createProvider(t.app, cookie);
     const opCookie = await login(t.app, 'operator', 'operator-password-123');

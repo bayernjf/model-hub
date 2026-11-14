@@ -186,4 +186,25 @@ describe('providers CRUD', () => {
     const list = await app.request('/api/admin/providers', { headers: { Cookie: cookie } });
     expect((await list.json() as { providers: unknown[] }).providers).toHaveLength(0);
   });
+
+  it('refuses to delete a provider that still owns models', async () => {
+    const { app } = makeTestApp();
+    const cookie = await login(app);
+    const created = await app.request('/api/admin/providers',
+      jsonRequest(cookie, { method: 'POST', body: JSON.stringify(validProvider) }));
+    const id = ((await created.json()) as { provider: { id: string } }).provider.id;
+    const imported = await app.request(`/api/admin/providers/${id}/models/import`,
+      jsonRequest(cookie, {
+        method: 'POST',
+        body: JSON.stringify({ preset_provider_id: 'ark-plan', model_ids: ['ark-code-latest'] }),
+      }));
+    expect(imported.status).toBe(201);
+
+    const res = await app.request(`/api/admin/providers/${id}`,
+      jsonRequest(cookie, { method: 'DELETE' }));
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('conflict');
+    expect(body.error.message).toContain('model');
+  });
 });
