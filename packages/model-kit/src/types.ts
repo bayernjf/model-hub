@@ -211,4 +211,10 @@ export interface ModelKitOptions {
   // MODEL_KIT_BUDGET_ENFORCEMENT is 'off'. Assignments without a configured
   // daily budget are never governed either way.
   budgetEnforcement?: 'on' | 'off' | undefined;
+  /**
+   * Optional observer for a failed usage report (HTTP non-2xx or network
+   * error). Reports stay fire-and-forget and never block the call; this hook
+   * only makes the swallow visible to the caller's operator surface.
+   */
+  onUsageReportError?: (reason: string) => void;
 }

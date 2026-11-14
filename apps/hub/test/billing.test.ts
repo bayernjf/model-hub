@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import type { DatabaseSync } from 'node:sqlite';
 import { buildStatement, periodBounds } from '../src/billing.js';
-import type { CostAggregateRow } from '../src/repositories/reporting.js';
+import { freezeStatement, ReconciliationError } from '../src/billing-freeze.js';
+import { BillingPeriodRepository } from '../src/repositories/billing-periods.js';
+import { UsageRepository, type CostAggregateRow } from '../src/repositories/reporting.js';
 import { ValidationError } from '../src/validation.js';
 import { login, makeTestApp } from './helpers.js';
 
@@ -190,5 +193,110 @@ describe('GET /api/admin/billing', () => {
 
     const body = (await res.json()) as { period: string };
     expect(body.period).toBe(new Date().toISOString().slice(0, 7));
+  });
+});
+
+function seedBillingData(db: DatabaseSync): void {
+  db.prepare(
+    `INSERT INTO projects (id, slug, display_name, enabled, created_at, updated_at)
+     VALUES (?, ?, ?, 1, '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z')`,
+  ).run('prj_zeus', 'zeus', 'Zeus');
+  db.prepare(
+    `INSERT INTO projects (id, slug, display_name, enabled, created_at, updated_at)
+     VALUES (?, ?, ?, 1, '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z')`,
+  ).run('prj_loom', 'loom', 'Loom');
+
+  const insertUsage = db.prepare(
+    `INSERT INTO usage_events
+       (id, project_id, feature, billing_source, provider, model,
+        input_tokens, output_tokens, cache_read_tokens, http_status,
+        cached, cost_micros, ts, created_at)
+     VALUES (?, ?, 'chat', ?, 'ark', 'doubao', 10, 20, 0, 200, 0, ?, ?, '2026-11-01T00:00:00Z')`,
+  );
+  // zeus: builtin 300 + 200, byok 4000 (metered only); loom: builtin 100.
+  insertUsage.run('use_z1', 'prj_zeus', 'builtin', 300, '2026-11-15T00:00:00Z');
+  insertUsage.run('use_z2', 'prj_zeus', 'builtin', 200, '2026-11-16T00:00:00Z');
+  insertUsage.run('use_z3', 'prj_zeus', 'byok', 4000, '2026-11-17T00:00:00Z');
+  insertUsage.run('use_l1', 'prj_loom', 'builtin', 100, '2026-11-18T00:00:00Z');
+}
+
+describe('freezeStatement (T-B1-04)', () => {
+  it('snapshots per-project billable amounts matching the statement total', () => {
+    const t = makeTestApp();
+    seedBillingData(t.db);
+
+    const result = freezeStatement(
+      new UsageRepository(t.db),
+      new BillingPeriodRepository(t.db),
+      '2026-11',
+    );
+
+    expect(result.totalBillableMicros).toBe(600);
+    expect(result.frozen).toHaveLength(2);
+
+    const rows = new BillingPeriodRepository(t.db).listByPeriod('2026-11');
+    const byProject = new Map(rows.map((r) => [r.project_id, r.amount_micros]));
+    expect(byProject.get('prj_zeus')).toBe(500);
+    expect(byProject.get('prj_loom')).toBe(100);
+    // byok money never enters the frozen statement.
+    expect(byProject.get('prj_zeus')).not.toBe(4500);
+  });
+
+  it('is idempotent: re-freezing updates the row, never duplicates it', () => {
+    const t = makeTestApp();
+    seedBillingData(t.db);
+    const repo = new BillingPeriodRepository(t.db);
+    const usageRepo = new UsageRepository(t.db);
+
+    freezeStatement(usageRepo, repo, '2026-11');
+    freezeStatement(usageRepo, repo, '2026-11');
+
+    expect(repo.listByPeriod('2026-11')).toHaveLength(2);
+  });
+
+  it('aborts with ReconciliationError when the two aggregation paths disagree', () => {
+    const t = makeTestApp();
+    seedBillingData(t.db);
+    const usageRepo = new UsageRepository(t.db);
+
+    // A fake period repository that under-counts (drops loom's 100 micros) —
+    // the freeze must refuse to write rather than snapshot a drifted bill.
+    const lyingRepo = {
+      billableByProject: () => [{ project_id: 'prj_zeus', amount_micros: 500 }],
+      freezePeriod: () => {
+        throw new Error('freezePeriod must not run after reconciliation fails');
+      },
+      listByPeriod: () => [],
+    };
+
+    expect(() =>
+      freezeStatement(
+        usageRepo,
+        lyingRepo as unknown as BillingPeriodRepository,
+        '2026-11',
+      ),
+    ).toThrow(ReconciliationError);
+  });
+
+  it('exposes a freeze endpoint that requires admin and returns the snapshot', async () => {
+    const t = makeTestApp();
+    seedBillingData(t.db);
+
+    const anon = await t.app.request('/api/admin/billing/freeze?period=2026-11', {
+      method: 'POST',
+    });
+    expect(anon.status).toBe(401);
+
+    const cookie = await login(t.app);
+    const res = await t.app.request('/api/admin/billing/freeze?period=2026-11', {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { period: string; totalBillableMicros: number };
+    expect(body.period).toBe('2026-11');
+    expect(body.totalBillableMicros).toBe(600);
+    expect(new BillingPeriodRepository(t.db).listByPeriod('2026-11')).toHaveLength(2);
   });
 });

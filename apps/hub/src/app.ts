@@ -7,6 +7,7 @@ import { ProviderKeyRepository } from './repositories/provider-keys.js';
 import { ProjectRepository } from './repositories/projects.js';
 import { ModelRepository } from './repositories/models.js';
 import { AssignmentRepository } from './repositories/assignments.js';
+import { BillingPeriodRepository } from './repositories/billing-periods.js';
 import { SlidingWindowRateLimiter } from './rate-limit.js';
 import { RevisionService } from './revision.js';
 import { ProjectionService } from './projection.js';
@@ -29,6 +30,7 @@ import { adminHealthRoutes } from './routes/admin/health.js';
 import { adminCostRoutes } from './routes/admin/costs.js';
 import { adminBillingRoutes } from './routes/admin/billing.js';
 import { adminKnowledgeRoutes } from './routes/admin/knowledge.js';
+import { adminPortalRoutes } from './routes/admin/portal.js';
 import { sessionRoutes } from './routes/admin/session.js';
 import { pubRoutes } from './routes/pub.js';
 import { knowledgeRoutes } from './routes/knowledge.js';
@@ -38,6 +40,8 @@ export interface AppOverrides {
   knowledgePorts?: KnowledgePortsResolver;
   // Fetch impl used for outbound budget alert webhooks (tests).
   budgetAlertFetch?: typeof fetch;
+  // Fetch impl used for portal health probes (tests).
+  portalFetch?: typeof fetch;
 }
 
 // Build the Hono app with the shared config and database connection. The
@@ -65,6 +69,7 @@ export function createApp(
     providerKeyRepo,
   );
   const usageRepo = new UsageRepository(db);
+  const billingPeriodRepo = new BillingPeriodRepository(db);
   const healthRepo = new HealthCheckRepository(db);
   const alertRepo = new BudgetAlertRepository(db);
 
@@ -113,7 +118,8 @@ export function createApp(
     modelRepo,
     projectRepo,
   }));
-  app.route('/api/admin', adminBillingRoutes(config, usageRepo));
+  app.route('/api/admin', adminBillingRoutes(config, usageRepo, billingPeriodRepo));
+  app.route('/api/admin', adminPortalRoutes(config, overrides.portalFetch ?? fetch));
   app.route(
     '/api/admin',
     adminKnowledgeRoutes(config, projectRepo, knowledge),

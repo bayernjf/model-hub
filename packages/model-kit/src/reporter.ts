@@ -20,11 +20,14 @@ export interface UsageInput {
 }
 
 // Fire-and-forget usage report. Never blocks or throws into the caller.
+// `onError` is an optional observer: the swallow stays in place, but a failed
+// report (HTTP non-2xx or network error) is no longer invisible.
 export async function postUsage(
   hubUrl: string,
   token: string,
   fetchImpl: typeof fetch,
   input: UsageInput,
+  onError?: (reason: string) => void,
 ): Promise<void> {
   const body = {
     project: input.project,
@@ -43,7 +46,7 @@ export async function postUsage(
     ts: new Date().toISOString(),
   };
   try {
-    await fetchImpl(`${hubUrl.replace(/\/+$/, '')}/pub/v1/usage`, {
+    const response = await fetchImpl(`${hubUrl.replace(/\/+$/, '')}/pub/v1/usage`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -51,8 +54,13 @@ export async function postUsage(
       },
       body: JSON.stringify(body),
     });
-  } catch {
-    // reporting must not affect the workflow
+    if (!response.ok) {
+      onError?.(`usage report failed: HTTP ${response.status}`);
+    }
+  } catch (error) {
+    // reporting must not affect the workflow; the observer (when present)
+    // records the failure, it never rethrows into the caller.
+    onError?.(error instanceof Error ? error.message : 'usage report network error');
   }
 }
 
@@ -63,6 +71,7 @@ export function reportUsageInBackground(
   token: string,
   fetchImpl: typeof fetch,
   input: UsageInput,
+  onError?: (reason: string) => void,
 ): Promise<void> {
-  return postUsage(hubUrl, token, fetchImpl, input);
+  return postUsage(hubUrl, token, fetchImpl, input, onError);
 }

@@ -1,5 +1,13 @@
 # model-hub handoff（D 组 M7 收尾，2026-10-28）
 
+> **2026-11-13 补登：创建 loom 项目并分配 ark-code-latest（首次真正给 loom 供模）。**
+>
+> - 创建 `slug=loom` 项目（`prj_5c138bc4b8cb3847d1c2cfc3da005367`，enabled）。
+> - 分配 `ark-code-latest`（`mdl_6008b68bfbe5719f61d401af9262be45`，alias=`content`、role=primary、text，无日预算）。
+> - 签发 loom 项目 token（只显示一次，末四位 `60bf`），已配入 loom `infra/.env` 的 `MODEL_HUB_TOKEN`（gitignored）。
+> - 投影实测：loom token 拉 `GET /pub/v1/models` 返回 revision=44、1 模型（ark-code-latest，base_url `…/api/plan/v3`）；loom 侧 `projection synced: revision=44 models=1`。
+> - 用途：loom 的 `CONTENT-BASE`（commerce-os 链路）与 `ARTICLE-GEN`（growth-agent 链路）两场景 text 模态均解析到 ark-code-latest，替代原 agnes 兜底。
+
 > **2026-11-06 补登：dev → main 已于 2026-11-05 经 PR #14 合并（合并前 CI 全绿）；实测 origin/main 与 origin/dev 内容完全一致（git diff 为空）。**
 
 本文件记录 M7 收尾的工程进展；设计事实仍以 bayjf `docs/tier0/` 文档为准。

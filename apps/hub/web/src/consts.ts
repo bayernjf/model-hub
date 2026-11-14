@@ -6,6 +6,7 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
+  { href: '/portal', label: '门户' },
   { href: '/providers', label: '厂商' },
   { href: '/models', label: '模型' },
   { href: '/projects', label: '项目' },

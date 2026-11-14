@@ -1,0 +1,101 @@
+---
+import ConsoleLayout from '../layouts/ConsoleLayout.astro';
+import PortalStatus from '../islands/PortalStatus.tsx';
+---
+<ConsoleLayout title="门户">
+  <p class="portal-intro">Tier 0 核心服务入口与健康状态（本地自用）。</p>
+  <PortalStatus client:load />
+</ConsoleLayout>
+
+<style>
+  .portal-intro {
+    font-size: 13px;
+    color: var(--ink-dim);
+    margin: 0 0 16px;
+  }
+  .portal {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .portal-summary {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .portal-summary__count {
+    font-family: var(--mono);
+    color: var(--ok);
+    font-weight: 700;
+  }
+  .portal-summary__time {
+    color: var(--ink-faint);
+    font-size: 12px;
+  }
+  .portal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .portal-card {
+    background: var(--steel-800);
+    border: var(--hair);
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .portal-card__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .portal-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .portal-dot--ok {
+    background: var(--ok);
+  }
+  .portal-dot--down {
+    background: var(--alert);
+  }
+  .portal-card__name {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .portal-card__role {
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-left: auto;
+  }
+  .portal-card__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+  }
+  .portal-status {
+    font-family: var(--mono);
+  }
+  .portal-status--ok {
+    color: var(--ok);
+  }
+  .portal-status--down {
+    color: var(--alert);
+  }
+  .portal-latency {
+    color: var(--ink-faint);
+    font-family: var(--mono);
+  }
+</style>
