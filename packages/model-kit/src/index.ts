@@ -301,6 +301,7 @@ export class ModelKit {
         httpStatus,
         ...(degraded ? { degraded: true } : {}),
       },
+      this.options.onUsageReportError,
     );
   }
 
