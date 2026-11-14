@@ -118,6 +118,22 @@ export function providerRoutes(
 
   routes.delete('/:id', requireOwner(), (c) => {
     const id = c.req.param('id');
+    if (!repo.get(id)) return c.json({ error: { code: 'not_found' } }, 404);
+    // model_overlays has no ON DELETE clause; refuse with an actionable 409
+    // instead of letting the foreign key surface as an opaque 500. Provider
+    // keys cascade automatically (migration 014 ON DELETE CASCADE).
+    const modelCount = repo.countModels(id);
+    if (modelCount > 0) {
+      return c.json(
+        {
+          error: {
+            code: 'conflict',
+            message: `provider still owns ${modelCount} model(s); delete them before deleting the provider`,
+          },
+        },
+        409,
+      );
+    }
     const ok = repo.delete(id);
     if (!ok) return c.json({ error: { code: 'not_found' } }, 404);
     writeAudit(db, {

@@ -330,6 +330,43 @@ export class ModelRepository {
     return Number(result.changes) > 0;
   }
 
+  // How many project aliases still point at this model. Assignment rows carry
+  // no ON DELETE clause, so a model in use must be refused explicitly rather
+  // than surface a raw FOREIGN KEY 500 from the delete below.
+  countAssignments(modelId: string): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS c FROM assignments WHERE model_id = ?')
+      .get(modelId) as { c: number };
+    return row.c;
+  }
+
+  // Delete a model together with its append-only L2/L4 test history in one
+  // transaction. model_test_results has no ON DELETE clause and would
+  // otherwise block every model that was ever tested with an unreadable
+  // SQLite constraint error. Assignments are intentionally not touched —
+  // the route checks countAssignments() first.
+  deleteWithHistory(id: string): {
+    deleted: boolean;
+    testResultsRemoved: number;
+  } {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const removed = Number(
+        this.db
+          .prepare('DELETE FROM model_test_results WHERE model_id = ?')
+          .run(id).changes,
+      );
+      const result = this.db
+        .prepare('DELETE FROM model_overlays WHERE id = ?')
+        .run(id);
+      this.db.exec('COMMIT');
+      return { deleted: Number(result.changes) > 0, testResultsRemoved: removed };
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
   // Append one L2 test outcome (migration 013). Every probe the test route
   // runs goes through here so the models page can render the last result
   // after a reload instead of a session-only badge.
