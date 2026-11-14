@@ -1,0 +1,28 @@
+{
+  "description": "Golden retrieval set for the model-hub knowledge base (D5-3 / W3-6b). Each question names the single doc whose chunk must appear in the top-5 citations. Corpus lives in docs/ and is ingested under the loom project.",
+  "owner_slug": "loom",
+  "top_k": 5,
+  "pass_bar": 0.8,
+  "questions": [
+    { "id": "q01", "q": "雪峰保温杯一共有几个在售型号？", "expect_title": "01-产品总览与型号" },
+    { "id": "q02", "q": "XF-750 远征款有哪几种颜色可以选？", "expect_title": "01-产品总览与型号" },
+    { "id": "q03", "q": "XF-750 装热水 24 小时后还能保持多少度？", "expect_title": "02-保温性能参数" },
+    { "id": "q04", "q": "保冷测试用多少度的水，6 小时后要求不高于几度？", "expect_title": "02-保温性能参数" },
+    { "id": "q05", "q": "保温杯内胆用的是什么牌号的不锈钢？", "expect_title": "03-材质与食品接触安全" },
+    { "id": "q06", "q": "为什么不建议用这个杯子长期装果汁超过 6 小时？", "expect_title": "03-材质与食品接触安全" },
+    { "id": "q07", "q": "XF-500 标准款的净重和杯身高度分别是多少？", "expect_title": "04-容量与尺寸规格" },
+    { "id": "q08", "q": "哪个型号可能放不进紧凑型轿车的杯架？", "expect_title": "04-容量与尺寸规格" },
+    { "id": "q09", "q": "杯子能不能放进洗碗机清洗？", "expect_title": "05-清洁与保养指南" },
+    { "id": "q10", "q": "内胆上的茶渍应该用什么方法去除？", "expect_title": "05-清洁与保养指南" },
+    { "id": "q11", "q": "保温杯的质保期是多长时间，从什么时候开始算？", "expect_title": "06-质保政策" },
+    { "id": "q12", "q": "杯子摔了一个坑导致不保温，能走质保换新吗？", "expect_title": "06-质保政策" },
+    { "id": "q13", "q": "7 天无理由退货时运费由谁承担？", "expect_title": "07-退换货政策" },
+    { "id": "q14", "q": "工作日下午四点半下的单什么时候能发货？", "expect_title": "08-物流与发货时效" },
+    { "id": "q15", "q": "新疆地区的订单大概几天能送到，运费有什么特殊规则？", "expect_title": "08-物流与发货时效" },
+    { "id": "q16", "q": "替换密封圈单买多少钱，多久应该换一次？", "expect_title": "09-配件与替换件" },
+    { "id": "q17", "q": "为什么不能往保温杯里灌碳酸饮料？", "expect_title": "10-适用与禁用场景" },
+    { "id": "q18", "q": "在高海拔徒步时杯盖拧不开是质量问题吗？", "expect_title": "10-适用与禁用场景" },
+    { "id": "q19", "q": "产品有美国 FDA 认证吗，能不能卖到美国市场？", "expect_title": "11-认证与检测报告" },
+    { "id": "q20", "q": "杯盖漏水应该先检查什么，在质保期内怎么处理？", "expect_title": "12-常见问题FAQ" }
+  ]
+}
