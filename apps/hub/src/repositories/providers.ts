@@ -182,6 +182,15 @@ export class ProviderRepository {
     return Number(result.changes) > 0;
   }
 
+  // Models carry no ON DELETE clause, so deleting a provider with models would
+  // die on a raw FOREIGN KEY 500. The route checks this first and answers 409.
+  countModels(providerId: string): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS c FROM model_overlays WHERE provider_id = ?')
+      .get(providerId) as { c: number };
+    return row.c;
+  }
+
   // Persist the key cooldown policy JSON (already normalized upstream).
   setCooldownPolicy(id: string, policyJson: string): ProviderView | null {
     const result = this.db

@@ -95,6 +95,31 @@ describe('projects CRUD', () => {
     });
     expect(res.status).toBe(200);
   });
+
+  it('refuses to delete a project that still has tokens', async () => {
+    const { app } = makeTestApp();
+    const cookie = await login(app);
+    const id = await createProject(app, cookie);
+    await app.request(`/api/admin/projects/${id}/rotate-token`, {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+
+    const res = await app.request(`/api/admin/projects/${id}`, {
+      method: 'DELETE',
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('conflict');
+    expect(body.error.message).toContain('tokens');
+
+    // The project survives the refused delete.
+    const get = await app.request(`/api/admin/projects/${id}`, {
+      headers: { Cookie: cookie },
+    });
+    expect(get.status).toBe(200);
+  });
 });
 
 describe('project tokens', () => {

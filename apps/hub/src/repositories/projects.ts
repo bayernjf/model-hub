@@ -191,6 +191,28 @@ export class ProjectRepository {
     return Number(result.changes) > 0;
   }
 
+  // Dependent rows that carry foreign keys without ON DELETE. The route
+  // refuses deletion while any exist so the owner removes tokens,
+  // assignments and billing periods explicitly instead of hitting a raw
+  // SQLite constraint 500.
+  dependentCounts(projectId: string): {
+    tokens: number;
+    assignments: number;
+    billing_periods: number;
+  } {
+    const count = (table: string): number => {
+      const row = this.db
+        .prepare(`SELECT COUNT(*) AS c FROM ${table} WHERE project_id = ?`)
+        .get(projectId) as { c: number };
+      return row.c;
+    };
+    return {
+      tokens: count('tokens'),
+      assignments: count('assignments'),
+      billing_periods: count('billing_periods'),
+    };
+  }
+
   listTokens(projectId: string): TokenView[] {
     const rows = this.db
       .prepare(

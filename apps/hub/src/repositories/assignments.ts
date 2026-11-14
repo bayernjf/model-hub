@@ -73,9 +73,13 @@ export class AssignmentRepository {
   }
 
   listByProject(projectId: string): AssignmentView[] {
+    // rowid is the explicit tiebreak: a batch PUT stamps every row with the
+    // same created_at, so without it the projection order (and consumers that
+    // take list("text")[0] as the default model) would rely on undefined
+    // tie-ordering instead of the stable insertion order.
     const rows = this.db
       .prepare(
-        'SELECT * FROM assignments WHERE project_id = ? ORDER BY created_at',
+        'SELECT * FROM assignments WHERE project_id = ? ORDER BY created_at, rowid',
       )
       .all(projectId) as unknown as AssignmentRow[];
     return rows.map(toView);
@@ -83,7 +87,9 @@ export class AssignmentRepository {
 
   listAll(): AssignmentView[] {
     const rows = this.db
-      .prepare('SELECT * FROM assignments ORDER BY project_id, created_at')
+      .prepare(
+        'SELECT * FROM assignments ORDER BY project_id, created_at, rowid',
+      )
       .all() as unknown as AssignmentRow[];
     return rows.map(toView);
   }

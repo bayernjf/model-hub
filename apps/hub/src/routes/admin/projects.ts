@@ -95,6 +95,24 @@ export function projectRoutes(
 
   routes.delete('/:id', requireOwner(), (c) => {
     const id = c.req.param('id');
+    if (!repo.get(id)) return c.json({ error: { code: 'not_found' } }, 404);
+    // tokens / assignments / billing_periods have no ON DELETE clause.
+    // Name every remaining dependency instead of returning a raw 500.
+    const deps = repo.dependentCounts(id);
+    const remaining = Object.entries(deps)
+      .filter(([, n]) => n > 0)
+      .map(([kind, n]) => `${n} ${kind.replace('_', ' ')}`);
+    if (remaining.length > 0) {
+      return c.json(
+        {
+          error: {
+            code: 'conflict',
+            message: `project still has ${remaining.join(', ')}; remove them before deleting the project`,
+          },
+        },
+        409,
+      );
+    }
     const ok = repo.delete(id);
     if (!ok) return c.json({ error: { code: 'not_found' } }, 404);
     writeAudit(db, {

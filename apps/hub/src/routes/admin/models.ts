@@ -269,11 +269,27 @@ export function modelRoutes(
     return c.json({ model });
   });
 
-  // Retire a model.
+  // Retire a model. Assigned models are refused with a clear 409 (the alias
+  // must be removed first); otherwise the model and its L2/L4 test history
+  // are deleted in one transaction so an ever-tested model is not trapped by
+  // the model_test_results foreign key.
   routes.delete('/models/:id', requireOwner(), (c) => {
     const id = c.req.param('id');
-    const ok = repo.delete(id);
-    if (!ok) return c.json({ error: { code: 'not_found' } }, 404);
+    if (!repo.get(id)) return c.json({ error: { code: 'not_found' } }, 404);
+    const assignmentCount = repo.countAssignments(id);
+    if (assignmentCount > 0) {
+      return c.json(
+        {
+          error: {
+            code: 'conflict',
+            message: `model is assigned to ${assignmentCount} project alias(es); remove the assignments before deleting the model`,
+          },
+        },
+        409,
+      );
+    }
+    const result = repo.deleteWithHistory(id);
+    if (!result.deleted) return c.json({ error: { code: 'not_found' } }, 404);
     writeAudit(db, {
       actor: actorOf(c),
       action: 'model.delete',
@@ -283,7 +299,7 @@ export function modelRoutes(
       ip: clientIp(c),
     });
     revision.bump();
-    return c.json({ ok: true });
+    return c.json({ ok: true, removed_test_results: result.testResultsRemoved });
   });
 
   return routes;
