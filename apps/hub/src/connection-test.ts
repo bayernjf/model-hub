@@ -712,7 +712,15 @@ export async function testModel(
     );
     const scoped: TestResult = { ...result, scope: 'model' };
 
-    if (scoped.ok && !subscription && scoped.model_echo !== model.model) {
+    // Rolling model IDs (e.g. doubao-seed-evolving) are accepted by the vendor
+    // under the unified alias but echo their versioned expansion
+    // (…-latest-version or a dated suffix). That expansion is a successful
+    // resolution, not a misconfigured model, so accept it as a prefix match.
+    const echoMatches =
+      scoped.model_echo === model.model ||
+      (typeof scoped.model_echo === 'string' &&
+        scoped.model_echo.startsWith(`${model.model}-`));
+    if (scoped.ok && !subscription && !echoMatches) {
       return {
         ok: false,
         latency_ms: scoped.latency_ms,

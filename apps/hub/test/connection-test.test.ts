@@ -232,6 +232,18 @@ describe('testModel (L2)', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('accepts a versioned echo expansion for rolling model ids', async () => {
+    const spy: FetchLike = () =>
+      Promise.resolve(
+        jsonResponse(200, {
+          choices: [{}],
+          model: 'test-model-latest-version',
+        }),
+      );
+    const result = await testModel(modelTestInput(makeModel()), spy);
+    expect(result.ok).toBe(true);
+  });
+
   it('flags a mismatched echo as dialect_mismatch', async () => {
     const spy: FetchLike = () =>
       Promise.resolve(
