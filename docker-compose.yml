@@ -25,6 +25,11 @@ services:
       KNOWLEDGE_EMBED_ALIAS: ${KNOWLEDGE_EMBED_ALIAS:-embed}
       # Optional LLM reranker; empty leaves the vector order untouched.
       KNOWLEDGE_RERANK_ALIAS: ${KNOWLEDGE_RERANK_ALIAS:-}
+      # Budget watermark webhook (FR6-3). Unset URL keeps the alert layer off
+      # (kill switch); with both set, crossed watermarks POST a signed payload
+      # to the URL at most once per UTC day per level.
+      HUB_BUDGET_WEBHOOK_URL: ${HUB_BUDGET_WEBHOOK_URL:-}
+      HUB_BUDGET_WEBHOOK_SECRET: ${HUB_BUDGET_WEBHOOK_SECRET:-}
     ports:
       # Bind to loopback only; Caddy/Tailscale handles external exposure.
       - "127.0.0.1:8791:8791"
