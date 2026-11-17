@@ -27,6 +27,11 @@ export const UsageReportSchema = z
     // True when the kit rerouted the call to a fallback after the requested
     // primary crossed its daily budget (FR6-2). Older kit builds omit it.
     degraded: z.boolean().optional(),
+    // Tier0 org M3 F3.1: optional org attribution. Callers without org context
+    // (every pre-M3 caller) omit all three, and the columns stay NULL.
+    position_id: z.string().min(1).nullable().optional(),
+    department_id: z.string().min(1).nullable().optional(),
+    task_id: z.string().min(1).nullable().optional(),
     ts: z.string().datetime({ offset: true }),
   })
   .strict();

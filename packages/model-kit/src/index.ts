@@ -23,6 +23,7 @@ import type { TtsResult } from './audio.js';
 import { nodeWsFactory, transcribe } from './asr.js';
 import type { AsrResult, AsrSocketFactory } from './asr.js';
 import { reportUsageInBackground } from './reporter.js';
+import type { UsageDimensions } from './reporter.js';
 import type {
   CatalogResponse,
   DegradationInfo,
@@ -284,6 +285,7 @@ export class ModelKit {
     } | null,
     httpStatus: number,
     degraded?: DegradationInfo | null,
+    usageDimensions?: UsageDimensions,
   ): void {
     const project = this.catalog?.project ?? model.alias ?? 'unknown';
     void reportUsageInBackground(
@@ -300,6 +302,7 @@ export class ModelKit {
         reasoningTokens: usage?.reasoning_tokens,
         httpStatus,
         ...(degraded ? { degraded: true } : {}),
+        ...(usageDimensions ? { usageDimensions } : {}),
       },
       this.options.onUsageReportError,
     );
@@ -323,6 +326,8 @@ export class ModelKit {
       signal?: AbortSignal | undefined;
       maxTokens?: number | undefined;
       temperature?: number | undefined;
+      /** Tier0 org M3 F3.1: optional org attribution for the usage report. */
+      usageDimensions?: UsageDimensions | undefined;
     },
   ): Promise<ChatResult> {
     const { model, degraded } = this.precheck(alias, 'text');
@@ -337,7 +342,7 @@ export class ModelKit {
       },
       this.fetchImpl,
     );
-    this.reportUsage(alias, model, result.usage, result.httpStatus, degraded);
+    this.reportUsage(alias, model, result.usage, result.httpStatus, degraded, opts?.usageDimensions);
     return degraded ? { ...result, degraded } : result;
   }
 
@@ -350,6 +355,7 @@ export class ModelKit {
       signal?: AbortSignal | undefined;
       maxTokens?: number | undefined;
       temperature?: number | undefined;
+      usageDimensions?: UsageDimensions | undefined;
     },
   ): AsyncGenerator<StreamChunk> {
     const { model, degraded } = this.precheck(alias, 'text');
@@ -368,7 +374,7 @@ export class ModelKit {
       if (chunk.usage) usage = chunk.usage;
       yield degraded && chunk.done ? { ...chunk, degraded } : chunk;
     }
-    this.reportUsage(alias, model, usage, 200, degraded);
+    this.reportUsage(alias, model, usage, 200, degraded, opts?.usageDimensions);
   }
 
   // Embed text into vectors (synchronous). Reports the provider-echoed
@@ -376,7 +382,7 @@ export class ModelKit {
   async embed(
     alias: string,
     input: string | string[],
-    opts?: { signal?: AbortSignal | undefined },
+    opts?: { signal?: AbortSignal | undefined; usageDimensions?: UsageDimensions | undefined },
   ): Promise<EmbedResult> {
     const { model, degraded } = this.precheck(alias, 'embedding');
     const result = await embedJson(
@@ -391,6 +397,7 @@ export class ModelKit {
         : null,
       result.httpStatus,
       degraded,
+      opts?.usageDimensions,
     );
     return degraded ? { ...result, degraded } : result;
   }
@@ -399,14 +406,18 @@ export class ModelKit {
   async image(
     alias: string,
     prompt: string,
-    opts?: { size?: string | undefined; signal?: AbortSignal | undefined },
+    opts?: {
+      size?: string | undefined;
+      signal?: AbortSignal | undefined;
+      usageDimensions?: UsageDimensions | undefined;
+    },
   ): Promise<ImageResult> {
     const { model, degraded } = this.precheck(alias, 'image');
     const result = await generateImage(
       { model, prompt, size: opts?.size, signal: opts?.signal },
       this.fetchImpl,
     );
-    this.reportUsage(alias, model, null, result.httpStatus, degraded);
+    this.reportUsage(alias, model, null, result.httpStatus, degraded, opts?.usageDimensions);
     return degraded ? { ...result, degraded } : result;
   }
 
@@ -418,6 +429,7 @@ export class ModelKit {
     opts?: {
       signal?: AbortSignal | undefined;
       pollTimeoutMs?: number | undefined;
+      usageDimensions?: UsageDimensions | undefined;
     },
   ): Promise<VideoResult> {
     const { model, degraded } = this.precheck(alias, 'video');
@@ -430,7 +442,7 @@ export class ModelKit {
       },
       this.fetchImpl,
     );
-    this.reportUsage(alias, model, null, result.httpStatus, degraded);
+    this.reportUsage(alias, model, null, result.httpStatus, degraded, opts?.usageDimensions);
     return degraded ? { ...result, degraded } : result;
   }
 
@@ -439,14 +451,14 @@ export class ModelKit {
   async tts(
     alias: string,
     text: string,
-    opts?: { signal?: AbortSignal | undefined },
+    opts?: { signal?: AbortSignal | undefined; usageDimensions?: UsageDimensions | undefined },
   ): Promise<TtsResult> {
     const { model, degraded } = this.precheck(alias, 'audio');
     const result = await synthesize(
       { model, text, signal: opts?.signal },
       this.fetchImpl,
     );
-    this.reportUsage(alias, model, null, result.httpStatus, degraded);
+    this.reportUsage(alias, model, null, result.httpStatus, degraded, opts?.usageDimensions);
     return degraded ? { ...result, degraded } : result;
   }
 
@@ -462,6 +474,7 @@ export class ModelKit {
       uid?: string | undefined;
       signal?: AbortSignal | undefined;
       request?: Record<string, unknown> | undefined;
+      usageDimensions?: UsageDimensions | undefined;
     },
   ): Promise<AsrResult> {
     const { model, degraded } = this.precheck(alias, 'audio');
@@ -480,7 +493,7 @@ export class ModelKit {
       },
       factory,
     );
-    this.reportUsage(alias, model, null, 200, degraded);
+    this.reportUsage(alias, model, null, 200, degraded, opts?.usageDimensions);
     return degraded ? { ...result, degraded } : result;
   }
 
@@ -550,6 +563,7 @@ export type {
 } from './asr.js';
 
 export { postUsage, reportUsageInBackground } from './reporter.js';
+export type { UsageDimensions } from './reporter.js';
 export { postKeyEvent } from './key-events.js';
 export {
   classifyProviderError,

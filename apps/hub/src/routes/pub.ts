@@ -210,6 +210,9 @@ export function pubRoutes(deps: PubDeps): Hono {
       cached: r.cached,
       cost_micros: costMicros,
       degraded: r.degraded ?? false,
+      position_id: r.position_id ?? null,
+      department_id: r.department_id ?? null,
+      task_id: r.task_id ?? null,
       ts: r.ts,
     });
 
