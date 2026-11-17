@@ -12,6 +12,28 @@
 
 本文件记录 M7 收尾的工程进展；设计事实仍以 bayjf `docs/tier0/` 文档为准。
 
+## 2026-11-17 M3 组织维度账本（F3.1 + F3.3）
+
+- **F3.1 账本三列**：迁移 `018_usage_org_dims.sql` 给 `usage_events` 加
+  `position_id / department_id / task_id`（全可空，旧行 NULL，既有 project×day×model
+  聚合不变）+ `idx_usage_task`、`idx_usage_position_ts`。仓储 `UsageEventInsert/View`
+  与 `append/listByProject` 补三列；`UsageReportSchema`（`.strict()`）接受三字段
+  （`string.min(1).nullable().optional()`）；`POST /pub/v1/usage` 落到 append。
+  model-kit 新增 `UsageDimensions`，`chat/stream/embed/image/video/tts/asr`
+  七个方法以 `opts.usageDimensions` 透传，缺省不发送（`.strict()` 不拒收）。
+- **F3.3 三维聚合 + 分面**：`UsageRepository.aggregateByOrg('position'|'department'|'task')`
+  （白名单列名，窗口 from/to，无归因行不计入）；`GET /api/admin/costs/org?group_by=`
+  返回 `{ group_by, window, rows, totals }`（非法 group_by 400）；成本页新增
+  「按组织维度」分面（任务/岗位/部门切换，随页面时间窗联动）。
+- 验证：`npm run check:all` 全绿（**48 测试文件 / 419 用例**、`check:migrations`
+  18 文件表集合一致、typecheck/lint/build/test:python 全过）。
+- 实证（真实 SQLite 副本）：对 `apps/hub/data/model-hub.db` 的副本应用 018 后，
+  `pragma_table_info` 三列存在；原有 3 行 `usage_events` 归因列全 NULL；
+  手工写入 `task_ops_1/pos_ops_1/dep_ops_1` 一行可查，`GROUP BY task_id` 得
+  `4321` micros。
+- 未做：管理台尚无一键「导出该任务全部调用明细」；ops-console 侧无组织成本页
+  （本轮分面落在 hub 自己的成本页）。
+
 ## 2026-11-11 全端点只读实测（45 探针 / 0 个 5xx）
 
 本地实例 `127.0.0.1:8791`（uptime 9h+，revision **38**）。此前只验过用量计量，

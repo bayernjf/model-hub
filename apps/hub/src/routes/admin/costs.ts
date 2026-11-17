@@ -10,6 +10,7 @@ import type { ProjectRepository } from '../../repositories/projects.js';
 import type {
   CostAggregateRow,
   CostAggregateWindow,
+  OrgDimension,
   UsageRepository,
 } from '../../repositories/reporting.js';
 import { ValidationError } from '../../validation.js';
@@ -207,6 +208,46 @@ export function adminCostRoutes(
 ): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
   routes.use('*', requireAdmin(config));
+
+  // M3 F3.3: org-dimension cost facet. One endpoint, one axis per call, so the
+  // console can switch tabs without inventing three near-identical routes.
+  routes.get('/costs/org', (c) => {
+    const raw = c.req.query('group_by')?.trim() ?? 'task';
+    const allowed: OrgDimension[] = ['position', 'department', 'task'];
+    if (!allowed.includes(raw as OrgDimension)) {
+      return c.json(
+        {
+          error: {
+            code: 'validation_error',
+            field: 'group_by',
+            message: 'group_by must be position, department or task',
+          },
+        },
+        400,
+      );
+    }
+    const groupBy = raw as OrgDimension;
+
+    let window: CostAggregateWindow | undefined;
+    try {
+      window = parseWindow(c.req.query());
+    } catch (err) {
+      if (err instanceof ValidationError) return validationResponse(c, err);
+      throw err;
+    }
+
+    const rows = usageRepo.aggregateByOrg(groupBy, window);
+    const totals = rows.reduce(
+      (acc, row) => ({
+        calls: acc.calls + row.calls,
+        input_tokens: acc.input_tokens + row.input_tokens,
+        output_tokens: acc.output_tokens + row.output_tokens,
+        cost_micros: acc.cost_micros + row.cost_micros,
+      }),
+      { calls: 0, input_tokens: 0, output_tokens: 0, cost_micros: 0 },
+    );
+    return c.json({ group_by: groupBy, window: window ?? null, rows, totals });
+  });
 
   routes.get('/costs', (c) => {
 

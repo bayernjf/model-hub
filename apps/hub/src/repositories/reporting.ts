@@ -20,6 +20,11 @@ export interface UsageEventInsert {
   // True when the kit rerouted the call to this assignment because the
   // requested primary crossed its daily budget (FR6-2). Defaults to false.
   degraded?: boolean | undefined;
+  // Tier0 org M3 F3.1: optional org attribution. Absent for every caller that
+  // has no org context; the columns stay NULL and aggregations are unchanged.
+  position_id?: string | null | undefined;
+  department_id?: string | null | undefined;
+  task_id?: string | null | undefined;
   ts: string;
 }
 
@@ -51,6 +56,9 @@ export interface UsageEventView {
   http_status: number;
   cost_micros: number | null;
   degraded: boolean;
+  position_id: string | null;
+  department_id: string | null;
+  task_id: string | null;
   ts: string;
 }
 
@@ -89,6 +97,28 @@ export interface CostAggregateWindow {
   to?: string;
 }
 
+// Tier0 org M3 F3.3: the three org axes a usage row can be attributed to.
+export type OrgDimension = 'position' | 'department' | 'task';
+
+// Whitelisted column per dimension: the column name is interpolated into SQL,
+// so it must never come from user input without this mapping.
+const ORG_COLUMN: Record<OrgDimension, 'position_id' | 'department_id' | 'task_id'> = {
+  position: 'position_id',
+  department: 'department_id',
+  task: 'task_id',
+};
+
+// One bucket of org-dimension spend: the axis value plus the same cell fields
+// the project/day/model aggregate exposes, so the console can render it with
+// the existing money/token formatting.
+export interface OrgCostRow {
+  key: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_micros: number;
+}
+
 // One row of the M5 budget watermark aggregation: builtin cost_micros summed
 // for the current UTC day, grouped by assignment (NULL group = rows reported
 // without a valid assignment). BYOK rows carry cost_micros NULL and therefore
@@ -111,8 +141,9 @@ export class UsageRepository {
            (id, project_id, feature, billing_source, billing_type, provider,
             model, assignment_id, input_tokens, output_tokens,
             cache_read_tokens, reasoning_tokens, quantity, http_status,
-            cached, cost_micros, degraded, ts, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            cached, cost_micros, degraded, position_id, department_id, task_id,
+            ts, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -132,6 +163,9 @@ export class UsageRepository {
         input.cached ? 1 : 0,
         input.cost_micros,
         input.degraded ? 1 : 0,
+        input.position_id ?? null,
+        input.department_id ?? null,
+        input.task_id ?? null,
         input.ts,
         createdAt,
       );
@@ -150,6 +184,9 @@ export class UsageRepository {
       http_status: input.http_status,
       cost_micros: input.cost_micros,
       degraded: input.degraded ?? false,
+      position_id: input.position_id ?? null,
+      department_id: input.department_id ?? null,
+      task_id: input.task_id ?? null,
       ts: input.ts,
     };
   }
@@ -175,6 +212,9 @@ export class UsageRepository {
       http_status: number;
       cost_micros: number | null;
       degraded: number;
+      position_id: string | null;
+      department_id: string | null;
+      task_id: string | null;
       ts: string;
     }>;
     return rows.map((r) => ({ ...r, degraded: r.degraded === 1 }));
@@ -239,6 +279,40 @@ export class UsageRepository {
       )
       .all(...params) as unknown as CostAggregateRow[];
 
+  }
+
+  // M3 F3.3: spend grouped by one org axis (position / department / task).
+  // Rows without that axis are excluded — an "unattributed" bucket would mix
+  // every legacy caller into one number and answer nothing. BYOK rows keep
+  // their zero cost (cost_micros is NULL, COALESCE'd to 0).
+  aggregateByOrg(
+    dimension: OrgDimension,
+    window?: CostAggregateWindow,
+  ): OrgCostRow[] {
+    const column = ORG_COLUMN[dimension];
+    const conditions = [`${column} IS NOT NULL`];
+    const params: string[] = [];
+    if (window?.from) {
+      conditions.push('ts >= ?');
+      params.push(window.from);
+    }
+    if (window?.to) {
+      conditions.push('ts <= ?');
+      params.push(window.to);
+    }
+    return this.db
+      .prepare(
+        `SELECT ${column} AS key,
+                COUNT(*) AS calls,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cost_micros), 0) AS cost_micros
+         FROM usage_events
+         WHERE ${conditions.join(' AND ')}
+         GROUP BY ${column}
+         ORDER BY cost_micros DESC, calls DESC, key ASC`,
+      )
+      .all(...params) as unknown as OrgCostRow[];
   }
 
   // Rows in the window whose project_id matches no projects row. The aggregate

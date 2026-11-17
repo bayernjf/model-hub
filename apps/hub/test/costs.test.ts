@@ -446,3 +446,129 @@ describe('budget watermark column (W5-3)', () => {
     expect(data.budgets).toEqual([]);
   });
 });
+
+describe('org cost facet (M3 F3.3)', () => {
+  let s: Awaited<ReturnType<typeof setup>>;
+  beforeEach(async () => {
+    s = await setup();
+  });
+
+  async function report(body: Record<string, unknown>) {
+    return s.t.app.request('/pub/v1/usage', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${s.token}`,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('returns task buckets, sums their cost and excludes unattributed rows', async () => {
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 1000,
+      output_tokens: 500,
+      position_id: 'pos-1',
+      department_id: 'dep-1',
+      task_id: 'task-1',
+      ts: '2026-10-28T10:00:00.000Z',
+    });
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 2000,
+      output_tokens: 800,
+      position_id: 'pos-2',
+      department_id: 'dep-1',
+      task_id: 'task-1',
+      ts: '2026-10-28T11:00:00.000Z',
+    });
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 3000,
+      output_tokens: 900,
+      position_id: 'pos-2',
+      department_id: 'dep-2',
+      task_id: 'task-2',
+      ts: '2026-10-28T12:00:00.000Z',
+    });
+    // No org attribution: must stay out of every facet.
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 4000,
+      output_tokens: 1000,
+      ts: '2026-10-28T13:00:00.000Z',
+    });
+
+    const res = await s.t.app.request('/api/admin/costs/org?group_by=task', {
+      headers: { Cookie: s.cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      group_by: string;
+      rows: Array<{ key: string; calls: number; cost_micros: number }>;
+      totals: { calls: number; cost_micros: number };
+    };
+    expect(body.group_by).toBe('task');
+    expect(body.rows.map((r) => r.key)).toEqual(['task-1', 'task-2']);
+    expect(body.rows[0]).toMatchObject({ calls: 2 });
+    expect(body.rows[0]?.cost_micros).toBeGreaterThan(0);
+    // The facet total equals the sum of its buckets, and the unattributed row
+    // is absent from both.
+    expect(body.totals.calls).toBe(3);
+    expect(body.totals.cost_micros).toBe(
+      body.rows.reduce((sum, r) => sum + r.cost_micros, 0),
+    );
+  });
+
+  it('groups by department and honors the window', async () => {
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 100,
+      output_tokens: 50,
+      department_id: 'dep-1',
+      task_id: 'task-1',
+      ts: '2026-10-27T10:00:00.000Z',
+    });
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 200,
+      output_tokens: 100,
+      department_id: 'dep-2',
+      task_id: 'task-2',
+      ts: '2026-10-28T10:00:00.000Z',
+    });
+
+    const res = await s.t.app.request(
+      '/api/admin/costs/org?group_by=department&from=2026-10-28&to=2026-10-28',
+      { headers: { Cookie: s.cookie } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      rows: Array<{ key: string; calls: number }>;
+      totals: { calls: number };
+    };
+    expect(body.rows).toHaveLength(1);
+    expect(body.rows[0]?.key).toBe('dep-2');
+    expect(body.totals.calls).toBe(1);
+  });
+
+  it('rejects an unknown group_by with 400', async () => {
+    const res = await s.t.app.request('/api/admin/costs/org?group_by=team', {
+      headers: { Cookie: s.cookie },
+    });
+    expect(res.status).toBe(400);
+  });
+});

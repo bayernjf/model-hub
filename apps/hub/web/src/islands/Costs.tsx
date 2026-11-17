@@ -42,6 +42,124 @@ interface BudgetRow {
   day: string;
 }
 
+// M3 F3.3: org-dimension facet — the same cost ledger grouped by the three
+// attribution axes. Task is the default because it is the finest axis and the
+// one the org runner actually stamps today.
+type OrgDimension = 'position' | 'department' | 'task';
+
+interface OrgCostRow {
+  key: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_micros: number;
+}
+
+interface OrgCostsResponse {
+  group_by: OrgDimension;
+  window: { from?: string; to?: string } | null;
+  rows: OrgCostRow[];
+  totals: Omit<OrgCostRow, 'key'>;
+}
+
+const ORG_DIMENSIONS: Array<{ key: OrgDimension; label: string }> = [
+  { key: 'task', label: '按任务' },
+  { key: 'position', label: '按岗位' },
+  { key: 'department', label: '按部门' },
+];
+
+function OrgCosts({ query }: { query: string }) {
+  const [groupBy, setGroupBy] = useState<OrgDimension>('task');
+  const [data, setData] = useState<OrgCostsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const qs = new URLSearchParams(query.startsWith('?') ? query.slice(1) : query);
+    qs.set('group_by', groupBy);
+    apiJson<OrgCostsResponse>(`/api/admin/costs/org?${qs.toString()}`)
+      .then((d) => {
+        if (!cancelled) setData(d);
+      })
+      .catch((thrown) => {
+        if (!cancelled) setError(thrown instanceof Error ? thrown.message : String(thrown));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [groupBy, query, attempt]);
+
+  return (
+    <section>
+      <div className="toolbar">
+        <h2>按组织维度</h2>
+        <div className="filters">
+          {ORG_DIMENSIONS.map((d) => (
+            <button
+              key={d.key}
+              className={`btn ${groupBy === d.key ? 'btn--primary' : ''}`}
+              onClick={() => setGroupBy(d.key)}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading && !data && <AsyncState loading />}
+      {error && <AsyncState error={error} onRetry={() => setAttempt((a) => a + 1)} />}
+      {data && (
+        <table>
+          <thead>
+            <tr>
+              <th>{groupBy === 'task' ? '任务' : groupBy === 'position' ? '岗位' : '部门'}</th>
+              <th>调用次数</th>
+              <th>输入 tokens</th>
+              <th>输出 tokens</th>
+              <th>成本 (USD)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.length === 0 && (
+              <tr>
+                <td colSpan={5}>暂无带组织归因的用量。未标注岗位/部门/任务的调用不计入本表。</td>
+              </tr>
+            )}
+            {data.rows.map((row) => (
+              <tr key={row.key}>
+                <td>
+                  <code>{row.key}</code>
+                </td>
+                <td>{row.calls}</td>
+                <td>{row.input_tokens}</td>
+                <td>{row.output_tokens}</td>
+                <td>{usd(row.cost_micros)}</td>
+              </tr>
+            ))}
+          </tbody>
+          {data.rows.length > 0 && (
+            <tfoot>
+              <tr>
+                <td>合计</td>
+                <td>{data.totals.calls}</td>
+                <td>{data.totals.input_tokens}</td>
+                <td>{data.totals.output_tokens}</td>
+                <td>{usd(data.totals.cost_micros)}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      )}
+    </section>
+  );
+}
+
 const DAY_MS = 86_400_000;
 
 // Time-range presets (W2-6). "全部" keeps the original unfiltered view;
@@ -387,6 +505,12 @@ export default function Costs() {
           </tbody>
         </table>
       </section>
+
+      <OrgCosts query={customRange ? qsForWindow(customRange) : windowQuery(range)} />
     </div>
   );
+}
+
+function qsForWindow(w: { from: string; to: string }): string {
+  return `?from=${encodeURIComponent(w.from)}&to=${encodeURIComponent(w.to)}`;
 }

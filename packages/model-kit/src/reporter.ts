@@ -3,11 +3,21 @@ import type {
   ResolvedModel,
 } from './types.js';
 
+// Tier0 org M3 F3.1: optional org attribution carried through the report so
+// the hub can answer "what did this position / department / task cost". Callers
+// without org context omit it and the hub columns stay NULL.
+export interface UsageDimensions {
+  position_id?: string | undefined;
+  department_id?: string | undefined;
+  task_id?: string | undefined;
+}
+
 export interface UsageInput {
   project: string;
   feature: string;
   billingSource: BillingSource;
   model: ResolvedModel;
+  usageDimensions?: UsageDimensions | undefined;
   inputTokens?: number | undefined;
   outputTokens?: number | undefined;
   cacheReadTokens?: number | undefined;
@@ -43,6 +53,17 @@ export async function postUsage(
     http_status: input.httpStatus,
     cached: input.cached ?? false,
     degraded: input.degraded ?? false,
+    // Only spread present values: the hub schema treats absent and null alike
+    // (both mean "no org attribution") and .strict() rejects unknown keys.
+    ...(input.usageDimensions?.position_id
+      ? { position_id: input.usageDimensions.position_id }
+      : {}),
+    ...(input.usageDimensions?.department_id
+      ? { department_id: input.usageDimensions.department_id }
+      : {}),
+    ...(input.usageDimensions?.task_id
+      ? { task_id: input.usageDimensions.task_id }
+      : {}),
     ts: new Date().toISOString(),
   };
   try {
