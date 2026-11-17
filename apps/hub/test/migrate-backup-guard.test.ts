@@ -146,7 +146,7 @@ describe('016 backup guard', () => {
     process.env.HUB_BACKUP_PATH = backupPath;
     const db = openDatabase(dbPath);
 
-    expect(migrateUp(db)).toEqual([TARGET, '017_billing.sql']);
+    expect(migrateUp(db)).toEqual([TARGET, '017_billing.sql', '018_usage_org_dims.sql']);
 
     const tableSql = (
       db
@@ -163,7 +163,7 @@ describe('016 backup guard', () => {
     const dbPath = join(dir, 'model-hub.db');
     const db = openDatabase(dbPath);
 
-    expect(migrateUp(db)).toHaveLength(17);
+    expect(migrateUp(db)).toHaveLength(18);
     db.close();
   });
 });

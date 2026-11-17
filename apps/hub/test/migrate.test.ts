@@ -52,7 +52,7 @@ describe('SQLite migrations', () => {
     const db = freshDb();
     const applied = migrateUp(db);
 
-    expect(applied).toHaveLength(17);
+    expect(applied).toHaveLength(18);
     expect(userTableNames(db)).toEqual([...EXPECTED_TABLES].sort());
   });
 
@@ -69,14 +69,14 @@ describe('SQLite migrations', () => {
     const status = migrationStatus(db);
 
     expect(status.pending).toEqual([]);
-    expect(status.applied).toHaveLength(17);
+    expect(status.applied).toHaveLength(18);
   });
 
   it('reports all migrations pending on a fresh database', () => {
     const db = freshDb();
     const status = migrationStatus(db);
 
-    expect(status.pending).toHaveLength(17);
+    expect(status.pending).toHaveLength(18);
     expect(status.applied).toEqual([]);
   });
 
@@ -87,7 +87,7 @@ describe('SQLite migrations', () => {
     const rows = db
       .prepare('SELECT checksum FROM schema_migrations')
       .all() as Array<{ checksum: string | null }>;
-    expect(rows).toHaveLength(17);
+    expect(rows).toHaveLength(18);
     for (const row of rows) {
       expect(row.checksum).toMatch(/^[0-9a-f]{64}$/);
     }
@@ -137,7 +137,7 @@ describe('SQLite migrations', () => {
     expect(ledger.map((row) => row.name)).not.toContain(
       '016_allow_same_model_aliases.sql',
     );
-    expect(ledger).toHaveLength(17);
+    expect(ledger).toHaveLength(18);
     const residue = db
       .prepare(
         "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='assignments_new'",

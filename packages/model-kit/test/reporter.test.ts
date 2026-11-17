@@ -53,3 +53,52 @@ describe('usage report failure observer (D2-4)', () => {
     expect(seen).toEqual(['usage report failed: HTTP 429']);
   });
 });
+
+describe('org usage dimensions (Tier0 M3 F3.1)', () => {
+  function capture(): { bodies: unknown[]; fetchImpl: typeof fetch } {
+    const bodies: unknown[] = [];
+    const fetchImpl = (async (_url: unknown, init?: { body?: unknown }) => {
+      bodies.push(init?.body ? JSON.parse(String(init.body)) : null);
+      return new Response('', { status: 200 });
+    }) as unknown as typeof fetch;
+    return { bodies, fetchImpl };
+  }
+
+  it('sends the three org dimensions when provided', async () => {
+    const { bodies, fetchImpl } = capture();
+    await postUsage('https://hub.local', 'tok', fetchImpl, {
+      ...INPUT,
+      usageDimensions: {
+        position_id: 'pos_01',
+        department_id: 'dep_01',
+        task_id: 'task_01',
+      },
+    } as UsageInput);
+    expect(bodies[0]).toMatchObject({
+      position_id: 'pos_01',
+      department_id: 'dep_01',
+      task_id: 'task_01',
+    });
+  });
+
+  it('omits every org dimension when the caller has no org context', async () => {
+    const { bodies, fetchImpl } = capture();
+    await postUsage('https://hub.local', 'tok', fetchImpl, INPUT);
+    const body = bodies[0] as Record<string, unknown>;
+    expect(body).not.toHaveProperty('position_id');
+    expect(body).not.toHaveProperty('department_id');
+    expect(body).not.toHaveProperty('task_id');
+  });
+
+  it('sends only the dimensions that are present', async () => {
+    const { bodies, fetchImpl } = capture();
+    await postUsage('https://hub.local', 'tok', fetchImpl, {
+      ...INPUT,
+      usageDimensions: { task_id: 'task_only' },
+    } as UsageInput);
+    const body = bodies[0] as Record<string, unknown>;
+    expect(body.task_id).toBe('task_only');
+    expect(body).not.toHaveProperty('position_id');
+    expect(body).not.toHaveProperty('department_id');
+  });
+});
