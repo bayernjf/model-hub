@@ -39,6 +39,7 @@ describe('knowledge ports resolver', () => {
       KNOWLEDGE_LLM_TIMEOUT_MS: '100',
     });
     let signal: AbortSignal | undefined;
+    let maxTokens: number | undefined;
     const stalledKit = {
       embed: async () => {
         throw new Error('embed not used');
@@ -46,10 +47,11 @@ describe('knowledge ports resolver', () => {
       chat: async (
         _alias: string,
         _messages: unknown,
-        opts?: { signal?: AbortSignal },
+        opts?: { signal?: AbortSignal; maxTokens?: number },
       ) =>
         new Promise<never>((_resolve, reject) => {
           signal = opts?.signal;
+          maxTokens = opts?.maxTokens;
           signal?.addEventListener('abort', () => reject(signal?.reason));
         }),
     } as unknown as Parameters<typeof buildPorts>[2];
@@ -58,6 +60,7 @@ describe('knowledge ports resolver', () => {
     expect(ports.rerank).toBeTypeOf('function');
     await expect(ports.rerank!('query', ['a', 'b'])).rejects.toBeDefined();
     expect(signal?.aborted).toBe(true);
+    expect(maxTokens).toBe(256);
   });
 
   it('resolves to null when the consumer token is unset', async () => {

@@ -137,5 +137,11 @@ KNOWLEDGE_HUB_URL=…            # optional, defaults to loopback:<HUB_PORT>
 A timed-out rerank or answer is fail-soft: the query returns the vector order
 or citations without an answer. A timed-out embedding fails the request.
 
+Rerank is optional and stays disabled when `KNOWLEDGE_RERANK_ALIAS` is empty.
+Use a dedicated non-reasoning reranker: the local `doubao-seed-2-1-lite` and
+`doubao-seed-evolving` text aliases emit 659–1111 reasoning tokens on five real
+chunks and take 11–19s, which is not usable inside the default 15s timeout.
+Rerank calls also cap completion at 256 tokens.
+
 Unset `KNOWLEDGE_PROJECT_TOKEN` disables ingest/query with `503` while
 document listing/deletion keep working.
