@@ -117,7 +117,9 @@ export async function buildPorts(
           { role: 'system', content: RERANK_SYSTEM },
           { role: 'user', content: rerankUserPrompt(query, contents) },
         ],
-        { temperature: 0, signal: timeout() },
+        // The judge only needs a compact JSON array. Cap completion so a
+        // reasoning-heavy reranker cannot spend the whole timeout on prose.
+        { temperature: 0, maxTokens: 256, signal: timeout() },
       );
       return parseRerankScores(result.content, contents.length);
     };
