@@ -130,8 +130,12 @@ KNOWLEDGE_PROJECT_TOKEN=mh_…   # token of the project owning the aliases
 KNOWLEDGE_EMBED_ALIAS=embed    # embedding alias (default: embed)
 KNOWLEDGE_RERANK_ALIAS=…       # optional text alias for rerank
 KNOWLEDGE_ANSWER_ALIAS=…       # optional text alias for grounded answers
+KNOWLEDGE_LLM_TIMEOUT_MS=15000 # embedding/rerank/answer timeout (100-60000)
 KNOWLEDGE_HUB_URL=…            # optional, defaults to loopback:<HUB_PORT>
 ```
+
+A timed-out rerank or answer is fail-soft: the query returns the vector order
+or citations without an answer. A timed-out embedding fails the request.
 
 Unset `KNOWLEDGE_PROJECT_TOKEN` disables ingest/query with `503` while
 document listing/deletion keep working.
