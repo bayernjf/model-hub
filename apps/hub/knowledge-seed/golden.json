@@ -1,5 +1,5 @@
 {
-  "description": "Golden retrieval set for the model-hub knowledge base (D5-3 / W3-6b). Each question names the single doc whose chunk must appear in the top-5 citations. Corpus lives in docs/ and is ingested under the loom project.",
+  "description": "Golden retrieval set for the model-hub knowledge base (D5-3 / W3-6b). Each question names the single doc whose chunk must appear in the top-5 citations; top-1 is reported separately as a discrimination signal, not a gate. Corpus lives in docs/ and is ingested under the loom project.",
   "owner_slug": "loom",
   "top_k": 5,
   "pass_bar": 0.8,
@@ -23,6 +23,26 @@
     { "id": "q17", "q": "为什么不能往保温杯里灌碳酸饮料？", "expect_title": "10-适用与禁用场景" },
     { "id": "q18", "q": "在高海拔徒步时杯盖拧不开是质量问题吗？", "expect_title": "10-适用与禁用场景" },
     { "id": "q19", "q": "产品有美国 FDA 认证吗，能不能卖到美国市场？", "expect_title": "11-认证与检测报告" },
-    { "id": "q20", "q": "杯盖漏水应该先检查什么，在质保期内怎么处理？", "expect_title": "12-常见问题FAQ" }
+    { "id": "q20", "q": "杯盖漏水应该先检查什么，在质保期内怎么处理？", "expect_title": "12-常见问题FAQ" },
+    { "id": "q21", "q": "XF-750 远征款的杯底直径是多少毫米？", "expect_title": "04-容量与尺寸规格" },
+    { "id": "q22", "q": "XF-500 标准款除了曜石黑和雾蓝，还有哪两种配色？", "expect_title": "01-产品总览与型号" },
+    { "id": "q23", "q": "质保期从签收当天还是次日零时开始算，一共多久？", "expect_title": "06-质保政策" },
+    { "id": "q24", "q": "7 天无理由退货和质量问题退货，运费分别由谁承担？", "expect_title": "07-退换货政策" },
+    { "id": "q25", "q": "洗碗机的高压喷淋和高温烘干会破坏哪两个部件？", "expect_title": "05-清洁与保养指南" },
+    { "id": "q26", "q": "高海拔徒步时杯盖变紧，这算质量问题吗？", "expect_title": "10-适用与禁用场景" },
+    { "id": "q27", "q": "产品有没有做 FDA 21 CFR 注册，能不能卖到美国？", "expect_title": "11-认证与检测报告" },
+    { "id": "q28", "q": "欧盟 LFGB 检测结果出来了吗？", "expect_title": "11-认证与检测报告" },
+    { "id": "q29", "q": "新疆、西藏、青海偏远地区大概几天送达，会不会加收附加费？", "expect_title": "08-物流与发货时效" },
+    { "id": "q30", "q": "配件订单满多少包邮，能不能和主商品满 199 元合并计算？", "expect_title": "09-配件与替换件" },
+    { "id": "q31", "q": "XF-350 和 XF-500 的杯底直径相差多少毫米？", "expect_title": "04-容量与尺寸规格" },
+    { "id": "q32", "q": "XF-350 轻行款有专用杯套吗？", "expect_title": "09-配件与替换件" },
+    { "id": "q33", "q": "杯盖组件三个型号通用吗，单买多少钱？", "expect_title": "09-配件与替换件" },
+    { "id": "q34", "q": "XF-750 注入 95℃ 热水，24 小时后最低还能保持多少度？", "expect_title": "02-保温性能参数" },
+    { "id": "q35", "q": "内胆和杯身外壳分别用什么牌号的不锈钢？", "expect_title": "03-材质与食品接触安全" },
+    { "id": "q36", "q": "质保范围内换新，往返运费由谁承担？", "expect_title": "06-质保政策" },
+    { "id": "q37", "q": "超过 30 天但还在 12 个月质保内，还能退货退款吗？", "expect_title": "07-退换货政策" },
+    { "id": "q38", "q": "工作日 16:00 之后付款的订单什么时候发货？", "expect_title": "08-物流与发货时效" },
+    { "id": "q39", "q": "检测报告会随箱附赠吗，需要怎么申请？", "expect_title": "11-认证与检测报告" },
+    { "id": "q40", "q": "杯盖和密封圈的耐温范围是多少？", "expect_title": "03-材质与食品接触安全" }
   ]
 }
