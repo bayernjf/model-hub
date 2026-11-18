@@ -5,7 +5,8 @@
  * Two phases, both idempotent:
  *   --ingest  upload every markdown doc under apps/hub/knowledge-seed/docs to
  *             the owner project (default: loom), skipping titles already there
- *   --eval    run golden.json questions and compute hit@5 against citations
+ *   --eval    run golden.json questions and compute hit@5 against citations;
+ *             also reports top-1 as a discrimination signal (not a gate)
  *
  * Default (no flag) runs ingest then eval. Exit 1 when the hit rate is below
  * the pass bar unless --no-gate is set. The admin password is read from
@@ -87,6 +88,7 @@ async function main() {
 
   const rows = [];
   let hits = 0;
+  let top1Hits = 0;
   for (const item of golden.questions) {
     const res = await post("/api/admin/knowledge/query", {
       owner, query: item.q, top_k: TOP_K, rerank: false,
@@ -95,12 +97,16 @@ async function main() {
     const body = await res.json();
     const titles = (body.citations ?? []).map((c) => c.title);
     const hit = titles.includes(item.expect_title);
+    const top1 = titles[0] === item.expect_title;
     if (hit) hits += 1;
-    rows.push({ id: item.id, hit, top: titles.slice(0, 3).join(" | ") || "(none)" });
+    if (top1) top1Hits += 1;
+    rows.push({ id: item.id, hit, top1, top: titles.slice(0, 3).join(" | ") || "(none)" });
   }
   const rate = hits / golden.questions.length;
-  for (const r of rows) console.log(`${r.hit ? "HIT " : "MISS"}  ${r.id}  ${r.top}`);
+  const top1Rate = top1Hits / golden.questions.length;
+  for (const r of rows) console.log(`${r.hit ? "HIT " : "MISS"}  ${r.top1 ? "TOP1" : "    "}  ${r.id}  ${r.top}`);
   console.log(`\nhit@${TOP_K}: ${hits}/${golden.questions.length} = ${(rate * 100).toFixed(1)}% (bar ${(PASS_BAR * 100).toFixed(0)}%)`);
+  console.log(`top@1: ${top1Hits}/${golden.questions.length} = ${(top1Rate * 100).toFixed(1)}% (reported, not a gate)`);
   if (GATE && rate < PASS_BAR) fail(`retrieval hit rate below bar`);
   console.log("PASS");
 }
