@@ -16,6 +16,7 @@
  * Usage:
  *   HUB_ADMIN_PASSWORD=... node scripts/knowledge-golden.mjs
  *   HUB_ADMIN_PASSWORD=... node scripts/knowledge-golden.mjs --eval --no-gate
+ *   HUB_ADMIN_PASSWORD=... node scripts/knowledge-golden.mjs --eval --rerank
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -35,6 +36,7 @@ const args = new Set(process.argv.slice(2));
 const DO_INGEST = args.has("--ingest") || (!args.has("--eval") && !args.has("--ingest"));
 const DO_EVAL = args.has("--eval") || (!args.has("--eval") && !args.has("--ingest"));
 const GATE = !args.has("--no-gate");
+const RERANK = args.has("--rerank");
 
 function fail(message) {
   console.error(`knowledge-golden: ${message}`);
@@ -91,7 +93,7 @@ async function main() {
   let top1Hits = 0;
   for (const item of golden.questions) {
     const res = await post("/api/admin/knowledge/query", {
-      owner, query: item.q, top_k: TOP_K, rerank: false,
+      owner, query: item.q, top_k: TOP_K, rerank: RERANK,
     });
     if (!res.ok) fail(`query '${item.id}' failed: HTTP ${res.status} ${await res.text()}`);
     const body = await res.json();
