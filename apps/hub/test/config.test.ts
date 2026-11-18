@@ -54,6 +54,19 @@ describe('loadConfig', () => {
     expect(cfg.port).toBe(8791);
   });
 
+  it('defaults the knowledge LLM timeout to 15000ms', () => {
+    const cfg = loadConfig({ ...validSecrets });
+    expect(cfg.knowledgeLlmTimeoutMs).toBe(15_000);
+  });
+
+  it('rejects invalid knowledge LLM timeouts', () => {
+    for (const value of ['0', '99', '60001', '1.5', 'soon']) {
+      expect(() =>
+        loadConfig({ ...validSecrets, KNOWLEDGE_LLM_TIMEOUT_MS: value }),
+      ).toThrow(ConfigError);
+    }
+  });
+
   it('refuses to boot with the dev switch under NODE_ENV=production', () => {
     expect(() =>
       loadConfig({ ...validSecrets, NODE_ENV: 'production', HUB_DEV_NO_AUTH: '1' }),

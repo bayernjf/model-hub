@@ -48,6 +48,8 @@ export interface HubConfig {
   /** Text alias used to synthesize grounded answers; unset returns
    * citations only. */
   knowledgeAnswerAlias?: string;
+  /** Timeout for embedding/rerank/answer model calls in milliseconds. */
+  knowledgeLlmTimeoutMs: number;
   /** Webhook URL that receives budget watermark alerts (80%/100% of an
    * assignment's daily budget). Unset disables budget alerting entirely. */
   budgetWebhookUrl?: string;
@@ -60,6 +62,7 @@ export interface HubConfig {
 const DEFAULT_PORT = 8791;
 const DEFAULT_HOST = '0.0.0.0';
 const DEFAULT_DATA_DIR = './data';
+const DEFAULT_KNOWLEDGE_LLM_TIMEOUT_MS = 15_000;
 
 function parsePort(raw: string | undefined): number {
   if (raw === undefined || raw === '') return DEFAULT_PORT;
@@ -68,6 +71,15 @@ function parsePort(raw: string | undefined): number {
     throw new ConfigError(`invalid HUB_PORT: ${raw}`);
   }
   return port;
+}
+
+function parseKnowledgeLlmTimeout(raw: string | undefined): number {
+  if (raw === undefined || raw === '') return DEFAULT_KNOWLEDGE_LLM_TIMEOUT_MS;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 100 || value > 60_000) {
+    throw new ConfigError(`invalid KNOWLEDGE_LLM_TIMEOUT_MS: ${raw}`);
+  }
+  return value;
 }
 
 function parseHost(raw: string | undefined): string {
@@ -160,6 +172,9 @@ export function loadConfig(
     ...(env.KNOWLEDGE_ANSWER_ALIAS
       ? { knowledgeAnswerAlias: env.KNOWLEDGE_ANSWER_ALIAS }
       : {}),
+    knowledgeLlmTimeoutMs: parseKnowledgeLlmTimeout(
+      env.KNOWLEDGE_LLM_TIMEOUT_MS,
+    ),
     ...(env.HUB_BUDGET_WEBHOOK_URL
       ? { budgetWebhookUrl: env.HUB_BUDGET_WEBHOOK_URL }
       : {}),

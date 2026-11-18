@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseRerankScores } from '../src/knowledge/ports.js';
 import { loadConfig } from '../src/config.js';
-import { createKnowledgePortsResolver } from '../src/knowledge/ports.js';
+import { buildPorts, createKnowledgePortsResolver } from '../src/knowledge/ports.js';
 
 describe('parseRerankScores', () => {
   it('parses scores embedded in surrounding prose', () => {
@@ -32,6 +32,34 @@ describe('parseRerankScores', () => {
 });
 
 describe('knowledge ports resolver', () => {
+  it('aborts a stalled rerank call after the configured timeout', async () => {
+    const config = loadConfig({
+      HUB_DEV_NO_AUTH: '1',
+      KNOWLEDGE_RERANK_ALIAS: 'rerank',
+      KNOWLEDGE_LLM_TIMEOUT_MS: '100',
+    });
+    let signal: AbortSignal | undefined;
+    const stalledKit = {
+      embed: async () => {
+        throw new Error('embed not used');
+      },
+      chat: async (
+        _alias: string,
+        _messages: unknown,
+        opts?: { signal?: AbortSignal },
+      ) =>
+        new Promise<never>((_resolve, reject) => {
+          signal = opts?.signal;
+          signal?.addEventListener('abort', () => reject(signal?.reason));
+        }),
+    } as unknown as Parameters<typeof buildPorts>[2];
+    const ports = await buildPorts(config, 'token', stalledKit);
+
+    expect(ports.rerank).toBeTypeOf('function');
+    await expect(ports.rerank!('query', ['a', 'b'])).rejects.toBeDefined();
+    expect(signal?.aborted).toBe(true);
+  });
+
   it('resolves to null when the consumer token is unset', async () => {
     const config = loadConfig({
       HUB_DEV_NO_AUTH: '1',
