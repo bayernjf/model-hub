@@ -72,19 +72,27 @@ export function parseRerankScores(
   return out;
 }
 
-async function buildPorts(
+export type KnowledgeKit = Pick<ModelKit, 'embed' | 'chat'>;
+
+export async function buildPorts(
   config: HubConfig,
   token: string,
+  kitOverride?: KnowledgeKit,
 ): Promise<KnowledgePorts> {
-  const kit: ModelKit = await initModelKit({
-    token,
-    hubUrl: config.knowledgeHubUrl,
-    cachePath: join(config.dataDir, 'knowledge-kit-cache.json'),
-  });
+  const kit: KnowledgeKit =
+    kitOverride ??
+    (await initModelKit({
+      token,
+      hubUrl: config.knowledgeHubUrl,
+      cachePath: join(config.dataDir, 'knowledge-kit-cache.json'),
+    }));
+  const timeout = () => AbortSignal.timeout(config.knowledgeLlmTimeoutMs);
 
   const ports: KnowledgePorts = {
     embed: async (inputs) => {
-      const result = await kit.embed(config.knowledgeEmbedAlias, inputs);
+      const result = await kit.embed(config.knowledgeEmbedAlias, inputs, {
+        signal: timeout(),
+      });
       if (result.httpStatus >= 400) {
         throw new Error(
           `embedding request failed with HTTP ${result.httpStatus}`,
@@ -109,7 +117,7 @@ async function buildPorts(
           { role: 'system', content: RERANK_SYSTEM },
           { role: 'user', content: rerankUserPrompt(query, contents) },
         ],
-        { temperature: 0 },
+        { temperature: 0, signal: timeout() },
       );
       return parseRerankScores(result.content, contents.length);
     };
@@ -118,10 +126,14 @@ async function buildPorts(
   const answerAlias = config.knowledgeAnswerAlias;
   if (answerAlias) {
     ports.answer = async (query, contexts) => {
-      const result = await kit.chat(answerAlias, [
-        { role: 'system', content: ANSWER_SYSTEM },
-        { role: 'user', content: answerUserPrompt(query, contexts) },
-      ]);
+      const result = await kit.chat(
+        answerAlias,
+        [
+          { role: 'system', content: ANSWER_SYSTEM },
+          { role: 'user', content: answerUserPrompt(query, contexts) },
+        ],
+        { signal: timeout() },
+      );
       const text = result.content.trim();
       return text.length > 0 ? text : null;
     };
