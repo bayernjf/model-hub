@@ -11,6 +11,7 @@ import type {
   CostAggregateRow,
   CostAggregateWindow,
   OrgDimension,
+  UsageEventView,
   UsageRepository,
 } from '../../repositories/reporting.js';
 import { ValidationError } from '../../validation.js';
@@ -201,6 +202,41 @@ export function budgetWatermarkRows(
 }
 
 
+const CSV_COLUMNS: readonly (keyof UsageEventView)[] = [
+  'ts',
+  'project_id',
+  'feature',
+  'billing_source',
+  'provider',
+  'model',
+  'assignment_id',
+  'input_tokens',
+  'output_tokens',
+  'reasoning_tokens',
+  'quantity',
+  'http_status',
+  'cost_micros',
+  'degraded',
+  'position_id',
+  'department_id',
+  'task_id',
+];
+
+function csvCell(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+// M3 wrap-up: one-click per-task call detail export. The admin console's
+// org cost table only shows aggregates, so this route backs the task-row
+// download without adding a second aggregation path.
+function usageCsv(rows: UsageEventView[]): string {
+  const header = CSV_COLUMNS.join(',');
+  const lines = rows.map((row) => CSV_COLUMNS.map((key) => csvCell(row[key])).join(','));
+  return `${[header, ...lines].join('\n')}\n`;
+}
+
 export function adminCostRoutes(
   config: HubConfig,
   usageRepo: UsageRepository,
@@ -247,6 +283,39 @@ export function adminCostRoutes(
       { calls: 0, input_tokens: 0, output_tokens: 0, cost_micros: 0 },
     );
     return c.json({ group_by: groupBy, window: window ?? null, rows, totals });
+  });
+
+  // M3 wrap-up: per-task call detail CSV. `limit` is optional and clamped so
+  // one export cannot scan the whole ledger by accident.
+  routes.get('/costs/task/:taskId/usage.csv', (c) => {
+    const taskId = c.req.param('taskId').trim();
+    if (!taskId) {
+      return c.json(
+        {
+          error: {
+            code: 'validation_error',
+            field: 'taskId',
+            message: 'taskId is required',
+          },
+        },
+        400,
+      );
+    }
+
+    const rawLimit = c.req.query('limit');
+    const parsedLimit = rawLimit === undefined ? 1000 : Number(rawLimit);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(Math.trunc(parsedLimit), 1), 5000)
+      : 1000;
+
+    const rows = usageRepo.listByTask(taskId, limit);
+    const safeTaskId = taskId.replace(/[^a-zA-Z0-9._-]+/g, '_');
+    c.header('Content-Type', 'text/csv; charset=utf-8');
+    c.header(
+      'Content-Disposition',
+      `attachment; filename="task-${safeTaskId}-usage.csv"`,
+    );
+    return c.body(usageCsv(rows));
   });
 
   routes.get('/costs', (c) => {
