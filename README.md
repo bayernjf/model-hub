@@ -20,6 +20,9 @@ Owner 单用户自托管的**模型控制面**：在一处录入厂商凭证、�
   项目侧 0600 缓存兜底，hub 宕机不影响运行。
 - **用量与测试**：`POST /pub/v1/usage`、`/health-checks`；L1–L4 连接测试。
 
+本仓实现说明：[模型管理与激活（控制面说明）](docs/model-management.md)
+（实体与边界、激活判定、投影/缓存、用量归属、排障）。
+
 ## 设计文档（单一事实源，在 bayjf 仓）
 
 - [PRD](../bayjf/docs/tier0/Tier0-model-hub%20PRD.md)
