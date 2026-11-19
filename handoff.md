@@ -1,5 +1,16 @@
 # model-hub handoff（D 组 M7 收尾，2026-10-28）
 
+## 待办登记（标准）
+
+> 本段是本产品唯一活跃待办入口；详细背景见下方原有章节。完成一项改 `[x]`，并在“最近变更 / Recently shipped”留证据。
+> 最近同步：2026-11-19
+
+- [ ] **pricing 真实单价** — 状态：open；当前为占位值，自用不影响，计费/上生产前必须补。
+- [ ] **视频 L2 per-provider 方言适配** — 状态：open；需适配 Agnes 的 `seconds/mode/size` 等提交 body 差异。
+- [ ] **ASR WebSocket 探测能力** — 状态：open；当前只有 HTTP probe，覆盖不了 WebSocket 端点。
+- [ ] **W7-5 生产宿主机部署** — 状态：open；本机 Docker 全绿，生产长驻改云服务器方案，后续执行。
+- [ ] **zeus Jev 专用决策模型注册** — 状态：open；若要迁 hub 需另立条目。
+
 > **2026-11-13 补登：创建 loom 项目并分配 ark-code-latest（首次真正给 loom 供模）。**
 >
 > - 创建 `slug=loom` 项目（`prj_5c138bc4b8cb3847d1c2cfc3da005367`，enabled）。
