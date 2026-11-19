@@ -565,6 +565,54 @@ describe('org cost facet (M3 F3.3)', () => {
     expect(body.totals.calls).toBe(1);
   });
 
+  it('exports per-task call detail as CSV', async () => {
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 1000,
+      output_tokens: 500,
+      task_id: 'task-1',
+      ts: '2026-10-28T10:00:00.000Z',
+    });
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 2000,
+      output_tokens: 800,
+      task_id: 'task-1',
+      ts: '2026-10-28T11:00:00.000Z',
+    });
+    await report({
+      ...baseUsage,
+      billing_source: 'builtin',
+      assignment_id: s.assignmentId,
+      input_tokens: 3000,
+      output_tokens: 900,
+      task_id: 'task-2',
+      ts: '2026-10-28T12:00:00.000Z',
+    });
+
+    const res = await s.t.app.request(
+      '/api/admin/costs/task/task-1/usage.csv?limit=10',
+      { headers: { Cookie: s.cookie } },
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/csv');
+    expect(res.headers.get('content-disposition')).toContain(
+      'task-task-1-usage.csv',
+    );
+
+    const csv = await res.text();
+    const lines = csv.trimEnd().split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain('ts,project_id,feature');
+    expect(lines[1]).toContain('task-1');
+    expect(lines[2]).toContain('task-1');
+    expect(csv).not.toContain('task-2');
+  });
+
   it('rejects an unknown group_by with 400', async () => {
     const res = await s.t.app.request('/api/admin/costs/org?group_by=team', {
       headers: { Cookie: s.cookie },
