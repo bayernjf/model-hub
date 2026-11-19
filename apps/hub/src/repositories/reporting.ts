@@ -220,6 +220,37 @@ export class UsageRepository {
     return rows.map((r) => ({ ...r, degraded: r.degraded === 1 }));
   }
 
+  // M3 wrap-up: every usage row attributed to one task, newest first. Backs
+  // the admin console's one-click "export all calls for this task" (CSV).
+  listByTask(taskId: string, limit: number = 1000): UsageEventView[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM usage_events WHERE task_id = ?
+         ORDER BY ts DESC, id ASC LIMIT ?`,
+      )
+      .all(taskId, limit) as unknown as Array<{
+      id: string;
+      project_id: string;
+      feature: string;
+      billing_source: string;
+      provider: string;
+      model: string;
+      assignment_id: string | null;
+      input_tokens: number;
+      output_tokens: number;
+      reasoning_tokens: number | null;
+      quantity: number | null;
+      http_status: number;
+      cost_micros: number | null;
+      degraded: number;
+      position_id: string | null;
+      department_id: string | null;
+      task_id: string | null;
+      ts: string;
+    }>;
+    return rows.map((r) => ({ ...r, degraded: r.degraded === 1 }));
+  }
+
   // Builtin spend for the current UTC day, grouped by project and assignment.
   // The day boundary is evaluated inside SQLite (date(ts) = date('now'), both
   // UTC) so the bucket flips exactly at 00:00 UTC regardless of host timezone.

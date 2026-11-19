@@ -135,6 +135,16 @@ function OrgCosts({ query }: { query: string }) {
               <tr key={row.key}>
                 <td>
                   <code>{row.key}</code>
+                  {groupBy === 'task' && (
+                    <a
+                      className="btn"
+                      style={{ marginLeft: '0.5rem' }}
+                      href={`/api/admin/costs/task/${encodeURIComponent(row.key)}/usage.csv`}
+                      download
+                    >
+                      导出明细
+                    </a>
+                  )}
                 </td>
                 <td>{row.calls}</td>
                 <td>{row.input_tokens}</td>
