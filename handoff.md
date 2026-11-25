@@ -5,11 +5,17 @@
 > 本段是本产品唯一活跃待办入口；详细背景见下方原有章节。完成一项改 `[x]`，并在“最近变更 / Recently shipped”留证据。
 > 最近同步：2026-11-25
 
-- [ ] **pricing 真实单价** — 状态：open；当前为占位值，自用不影响，计费/上生产前必须补。
-- [ ] **视频 L2 per-provider 方言适配** — 状态：open；需适配 Agnes 的 `seconds/mode/size` 等提交 body 差异。
-- [x] **ASR WebSocket 探测能力** — 已完成（2026-11-19，commit `7338606`）：`connection-test.ts` 新增 `probeAsrWs`，audio 模态按 `submit_path` 含 `/sauc/` 路由到 WS；`ws` 依赖入 hub，`connection-test.test.ts` 覆盖；2026-11-25 复核已合入 dev/main（`git branch --contains`）。
-- [ ] **W7-5 生产宿主机部署** — 状态：open；本机 Docker 全绿，生产长驻改云服务器方案，后续执行。
-- [ ] **zeus Jev 专用决策模型注册** — 状态：open；若要迁 hub 需另立条目。
+<!-- tier0:todos v1 -->
+| id | title | status | priority | owner | next | evidence | updated |
+|---|---|---|---|---|---|---|---|
+| MH-01 | pricing 真实单价 | open | p1 | self | 补真实单价；计费/上生产前必须完成 | - | 2026-11-25 |
+| MH-02 | 视频 L2 per-provider 方言适配 | open | p1 | self | 适配 Agnes `seconds/mode/size` 等提交 body | - | 2026-11-25 |
+| MH-03 | W7-5 生产宿主机部署 | open | p2 | self | 按云服务器方案部署并跑 healthz + 备份 | `DEPLOYMENT.md` | 2026-11-25 |
+| MH-04 | zeus Jev 专用决策模型注册 | open | p2 | self | 若迁 hub 需另立模型条目 | - | 2026-11-25 |
+| MH-05 | ASR WebSocket 探测能力 | done | p2 | self | 已完成（2026-11-19，commit `7338606`） | `apps/hub/src/connection-test.ts:395` | 2026-11-25 |
+<!-- /tier0:todos -->
+
+ASR 探测实现见 `probeAsrWs`（`apps/hub/src/connection-test.ts:395`），测试 `apps/hub/test/connection-test.test.ts`；2026-11-25 复核已合入 dev/main。
 
 > **2026-11-25 补登：ASR WebSocket 探测已完成**（`probeAsrWs`，commit `7338606`，已合入 dev/main）；同轮 TTS probe 方言适配（`probeTts`，commit `6e2bb25`）亦已完成，下方「开放点」对应两条已标注为已落地。本轮只做待办对账，未改代码、未 push。
 
