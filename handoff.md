@@ -8,10 +8,10 @@
 <!-- tier0:todos v1 -->
 | id | title | status | priority | owner | next | evidence | updated |
 |---|---|---|---|---|---|---|---|
-| MH-01 | pricing 真实单价 | open | p1 | self | 补真实单价；计费/上生产前必须完成 | - | 2026-11-25 |
-| MH-02 | 视频 L2 per-provider 方言适配 | open | p1 | self | 适配 Agnes `seconds/mode/size` 等提交 body | - | 2026-11-25 |
+| MH-01 | pricing 真实单价 | done | p1 | self | 已完成（2026-10-29，火山引擎公开价，commit `37625b2`） | `37625b2` | 2026-11-27 |
+| MH-02 | 视频 L2 per-provider 方言适配 | open | p1 | self | 提交 body 方言已适配（create_body/seconds_field/omit_duration）；剩 Agnes 真实生成复测（video_queue_full 阻塞） | `docs/video-integration.md` | 2026-11-27 |
 | MH-03 | W7-5 生产宿主机部署 | open | p2 | self | 按云服务器方案部署并跑 healthz + 备份 | `DEPLOYMENT.md` | 2026-11-25 |
-| MH-04 | zeus Jev 专用决策模型注册 | open | p2 | self | 若迁 hub 需另立模型条目 | - | 2026-11-25 |
+| MH-04 | zeus Jev 专用决策模型注册 | done | p2 | self | Jev 已下线，zeus 决策后端改用 ark-code-latest 走 hub 主路径，原 Jev 注册无需进行 | `handoff.md` | 2026-11-27 |
 | MH-05 | ASR WebSocket 探测能力 | done | p2 | self | 已完成（2026-11-19，commit `7338606`） | `apps/hub/src/connection-test.ts:395` | 2026-11-25 |
 <!-- /tier0:todos -->
 
