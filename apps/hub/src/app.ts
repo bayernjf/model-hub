@@ -21,6 +21,7 @@ import { KnowledgeService } from './knowledge/service.js';
 import type { KnowledgePortsResolver } from './knowledge/service.js';
 import { createKnowledgePortsResolver } from './knowledge/ports.js';
 import { healthRoutes } from './routes/health.js';
+import { metricsRoutes } from './routes/metrics.js';
 import { providerRoutes } from './routes/admin/providers.js';
 import { providerKeyRoutes } from './routes/admin/provider-keys.js';
 import { projectRoutes } from './routes/admin/projects.js';
@@ -84,6 +85,7 @@ export function createApp(
   const knowledgeQueryLimiter = new SlidingWindowRateLimiter(120, 3_600_000);
 
   app.route('/', healthRoutes(db));
+  app.route('/', metricsRoutes(db));
   app.route('/api/admin', sessionRoutes(config, db));
   app.route(
     '/api/admin/providers',
