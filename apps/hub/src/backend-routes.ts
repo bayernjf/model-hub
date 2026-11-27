@@ -7,6 +7,7 @@ export function isBackendPath(url: string): boolean {
     url.startsWith('/api/') ||
     url.startsWith('/pub/') ||
     url === '/healthz' ||
-    url === '/readyz'
+    url === '/readyz' ||
+    url === '/metrics'
   );
 }
