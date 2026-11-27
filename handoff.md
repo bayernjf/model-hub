@@ -45,8 +45,8 @@ ASR 探测实现见 `probeAsrWs`（`apps/hub/src/connection-test.ts:395`），�
   `modelhub_projects` / `modelhub_providers`。BYOK 行 cost 为 NULL 渲染为 0。
 - ✅ 测试 `apps/hub/test/metrics.test.ts` 2 例：空库 up/零计数、按 model+billing_source
   分组与 BYOK NULL cost 归零；全量 49 文件 / 425 tests 全绿、typecheck 0、lint 0。
-- ⬜ 端到端验证：待 model-hub 容器在 tier0-net 运行后，observability 抓取确认
-  `modelhub_up=1` 且面板取到样本（scrape job 与 4 面板已在 observability 仓接入）。
+- ✅ 端到端验证：`modelhub_up{exported_job="model-hub"}=1`，Prometheus 取到样本
+  （scrape job 与 4 面板已在 observability 仓接入；已重建镜像并重启容器实测）。
 
 ## 2026-11-17 M3 组织维度账本（F3.1 + F3.3）
 
