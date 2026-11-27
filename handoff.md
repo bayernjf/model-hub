@@ -9,13 +9,17 @@
 | id | title | status | priority | owner | next | evidence | updated |
 |---|---|---|---|---|---|---|---|
 | MH-01 | pricing 真实单价 | done | p1 | self | 已完成（2026-10-29，火山引擎公开价，commit `37625b2`） | `37625b2` | 2026-11-27 |
-| MH-02 | 视频 L2 per-provider 方言适配 | open | p1 | self | 提交 body 方言已适配（create_body/seconds_field/omit_duration）；剩 Agnes 真实生成复测（video_queue_full 阻塞） | `docs/video-integration.md` | 2026-11-27 |
+| MH-02 | 视频 L2 per-provider 方言适配 | blocked | p1 | self | 提交 body 方言已适配（create_body/seconds_field/omit_duration）；Agnes 真实生成复测仍被 `video_queue_full` 阻塞（2026-11-27 复测：HTTP 503，request id `20261127101227557086183qZZwj2Hl`，未计费）。待平台队列恢复后 deep 复测 | `docs/video-integration.md` | 2026-11-27 |
 | MH-03 | W7-5 生产宿主机部署 | open | p2 | self | 按云服务器方案部署并跑 healthz + 备份 | `DEPLOYMENT.md` | 2026-11-25 |
 | MH-04 | zeus Jev 专用决策模型注册 | done | p2 | self | Jev 已下线，zeus 决策后端改用 ark-code-latest 走 hub 主路径，原 Jev 注册无需进行 | `handoff.md` | 2026-11-27 |
 | MH-05 | ASR WebSocket 探测能力 | done | p2 | self | 已完成（2026-11-19，commit `7338606`） | `apps/hub/src/connection-test.ts:395` | 2026-11-25 |
 <!-- /tier0:todos -->
 
 ASR 探测实现见 `probeAsrWs`（`apps/hub/src/connection-test.ts:395`），测试 `apps/hub/test/connection-test.test.ts`；2026-11-25 复核已合入 dev/main。
+
+> **2026-11-27 补登：Agnes 视频 deep 复测仍被平台队列阻塞。**
+> - 触发 `POST /api/admin/models/mdl_d16587c46284827a3d629e296a045755/test?deep=true`，返回 `ok:false`、`server_error`、`video_queue_full`（HTTP 503，request id `20261127101227557086183qZZwj2Hl`，未计费）。
+> - 提交 body 方言此前已适配（`create_body` 用 `seconds/mode/size`、`omit_duration`），本次仅确认队列状态；MH-02 维持 blocked，待平台恢复后 deep 复测。
 
 > **2026-11-25 补登：ASR WebSocket 探测已完成**（`probeAsrWs`，commit `7338606`，已合入 dev/main）；同轮 TTS probe 方言适配（`probeTts`，commit `6e2bb25`）亦已完成，下方「开放点」对应两条已标注为已落地。本轮只做待办对账，未改代码、未 push。
 
