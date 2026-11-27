@@ -31,6 +31,23 @@ ASR 探测实现见 `probeAsrWs`（`apps/hub/src/connection-test.ts:395`），�
 
 本文件记录 M7 收尾的工程进展；设计事实仍以 bayjf `docs/tier0/` 文档为准。
 
+## 2026-11-27 OB-01 `/metrics` 端点（Tier0 collector）
+
+- ✅ 新增 `apps/hub/src/observability/metrics.ts`：`ModelHubMetricsService` 从
+  `usage_events` 单次聚合 `model × billing_source` 的 calls/input/output/cost_micros，
+  加 projects/providers 计数；`renderPrometheusMetrics` 输出 Prometheus 文本。
+- ✅ 新增 `apps/hub/src/routes/metrics.ts` + `app.ts` 挂载 `GET /metrics`（无鉴权，
+  只暴露聚合计数，不含 prompt 内容/key/项目 id）。
+- ✅ 指标族：`modelhub_up` / `modelhub_uptime_seconds` /
+  `modelhub_metrics_snapshot_timestamp_seconds` / `modelhub_usage_calls` /
+  `modelhub_usage_input_tokens` / `modelhub_usage_output_tokens` /
+  `modelhub_usage_cost_micros`（均带 `model` + `billing_source` 标签）/
+  `modelhub_projects` / `modelhub_providers`。BYOK 行 cost 为 NULL 渲染为 0。
+- ✅ 测试 `apps/hub/test/metrics.test.ts` 2 例：空库 up/零计数、按 model+billing_source
+  分组与 BYOK NULL cost 归零；全量 49 文件 / 425 tests 全绿、typecheck 0、lint 0。
+- ⬜ 端到端验证：待 model-hub 容器在 tier0-net 运行后，observability 抓取确认
+  `modelhub_up=1` 且面板取到样本（scrape job 与 4 面板已在 observability 仓接入）。
+
 ## 2026-11-17 M3 组织维度账本（F3.1 + F3.3）
 
 - **F3.1 账本三列**：迁移 `018_usage_org_dims.sql` 给 `usage_events` 加
