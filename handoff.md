@@ -31,6 +31,19 @@ ASR 探测实现见 `probeAsrWs`（`apps/hub/src/connection-test.ts:395`），�
 
 本文件记录 M7 收尾的工程进展；设计事实仍以 bayjf `docs/tier0/` 文档为准。
 
+## 2026-11-27 Ark key 归属验证 + Tier 0 业务测试
+
+- ✅ 确认用户提供的 key `ark-b417e28a-...-4296f`（末四位 296f）属 **Ark Plan（订阅，`/api/plan/v3`）**，非 Ark Platform（按量，`/api/v3`）。
+  - 直接 curl 验证：Ark Plan `ark-code-latest` 返回正常；Ark Platform `doubao-seed-evolving` 返回 `AuthenticationError`。
+- ✅ 该 key 已配置为 Ark Plan provider（prov_9d1f72）内置 key（api_key_hint `****296f`），L2 `ark-code-latest` 测试 `ok:True`。
+- ✅ 用该 key + `ark-code-latest` 跑 3 个 Tier 0 业务测试，全部通过：
+  1. **zeus 决策**：输入金额 1299 团队采购 → 输出 `{"decision":"approve","reason":...}`；
+  2. **loom 字段规划（DIM-MERGE）**：便携榨汁杯 → 输出 product_attribute/risk_control/marketing 结构化字段（含 field_name/role/source_route）；
+  3. **growth-agent 成稿**：输出小红书种草文案（3 卖点 + 1 行动号召）。
+- ⚠️ 过程中误把用户 Plan key 覆盖到 Ark Platform（按量）内置 key（原 `****133c`），致按量模型 `doubao-seed-evolving` 一度 unauthorized。
+- ✅ 已从 03:00 备份 `000mycodes-backups/model-hub/model-hub-20261127-030004.db` 恢复 Ark Platform 旧 key 密文（envelope `enc$v1$k1$...`），内置 key 与 provider_keys 主条目均已对齐为 `****133c`；L1/L2 `doubao-seed-evolving` 复测 `ok:True`。
+- 最终状态：Ark Plan 用用户新 key（296f）、Ark Platform 用旧按量 key（133c），两者互不冲突。
+
 ## 2026-11-27 OB-01 `/metrics` 端点（Tier0 collector）
 
 - ✅ 新增 `apps/hub/src/observability/metrics.ts`：`ModelHubMetricsService` 从
