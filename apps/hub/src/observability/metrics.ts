@@ -65,7 +65,7 @@ export class ModelHubMetricsService {
          GROUP BY model, billing_source
          ORDER BY model, billing_source`,
       )
-      .all() as UsageRow[];
+      .all() as unknown as UsageRow[];
 
     const projects = this.db.prepare('SELECT COUNT(*) AS n FROM projects').get() as
       | { n: unknown }
